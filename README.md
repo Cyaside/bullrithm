@@ -1,17 +1,36 @@
 # bullrithm
 
-A new Flutter project.
+Bullrithm adalah aplikasi Flutter untuk eksplorasi saham berbasis Alpha Vantage API.
 
-## Getting Started
+## Menjalankan App
 
-This project is a starting point for a Flutter application.
+1. Install dependency:
+```bash
+flutter pub get
+```
 
-A few resources to get you started if this is your first Flutter project:
+2. Jalankan app dengan URL Cloudflare Worker proxy:
+```bash
+flutter run --dart-define=ALPHA_VANTAGE_PROXY_URL=https://your-domain.com/query
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Contoh URL untuk Worker:
+- `https://bullrithm-proxy.<subdomain>.workers.dev/query`
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Keamanan API Key
+
+- App ini hanya mendukung mode proxy untuk Alpha Vantage.
+- API key tidak disimpan di Flutter client.
+- API key harus disimpan di server-side secret (contoh: Cloudflare Worker Secret).
+- Flutter hanya memanggil endpoint proxy `ALPHA_VANTAGE_PROXY_URL`.
+
+Catatan: pastikan Worker mengizinkan function yang dibutuhkan app (`SYMBOL_SEARCH`, `OVERVIEW`, `TIME_SERIES_DAILY`, `NEWS_SENTIMENT`, `TOP_GAINERS_LOSERS`) atau sediakan endpoint terpisah.
+
+## Setup Worker (ringkas)
+
+1. Buat Worker di Cloudflare Dashboard.
+2. Copy isi `cloudflare/worker.js` ke editor Worker.
+3. Set secret:
+   - `ALPHA_VANTAGE_KEY` = API key Alpha Vantage
+4. (Opsional, direkomendasikan) set variable biasa:
+   - `ALLOWED_ORIGIN` = origin Flutter Web kamu (contoh `https://bullrithm.pages.dev`)

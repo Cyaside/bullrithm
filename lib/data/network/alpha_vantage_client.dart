@@ -12,31 +12,27 @@ typedef LogFn = void Function(String message);
 class AlphaVantageClient {
   AlphaVantageClient({
     http.Client? httpClient,
-    required String apiKey,
+    required this.baseUrl,
     this.timeout = const Duration(seconds: 12),
-    this.baseUrl = 'https://www.alphavantage.co/query',
     LogFn? logger,
   }) : _httpClient = httpClient ?? http.Client(),
-       _apiKey = apiKey,
        _logger = logger ?? _defaultLogger;
 
   factory AlphaVantageClient.fromEnv({http.Client? httpClient, LogFn? logger}) {
-    final apiKey = AppEnv.alphaVantageApiKey;
-    if (apiKey == null) {
-      throw const AlphaVantageApiException(
-        'Missing Alpha Vantage API key. Add ALPHA_VANTAGE_API_KEY to .env',
+    if (AppEnv.hasAlphaVantageProxyUrl) {
+      return AlphaVantageClient(
+        httpClient: httpClient,
+        baseUrl: AppEnv.alphaVantageProxyUrl.trim(),
+        logger: logger,
       );
     }
 
-    return AlphaVantageClient(
-      httpClient: httpClient,
-      apiKey: apiKey,
-      logger: logger,
+    throw const AlphaVantageApiException(
+      'Missing proxy URL. Use --dart-define=ALPHA_VANTAGE_PROXY_URL=...',
     );
   }
 
   final http.Client _httpClient;
-  final String _apiKey;
   final Duration timeout;
   final String baseUrl;
   final LogFn _logger;
@@ -127,8 +123,7 @@ class AlphaVantageClient {
   }
 
   Future<Map<String, dynamic>> _get(Map<String, String> params) async {
-    final queryParams = <String, String>{...params, 'apikey': _apiKey};
-    final uri = Uri.parse(baseUrl).replace(queryParameters: queryParams);
+    final uri = Uri.parse(baseUrl).replace(queryParameters: params);
 
     _logger('GET $uri');
 
