@@ -4,6 +4,7 @@ import '../../../common/config/app_env.dart';
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
+import '../news/news_sentiment_screen.dart';
 import 'components/components.dart';
 
 class StockDetailScreen extends StatefulWidget {
@@ -159,6 +160,19 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
               const SizedBox(height: 12),
               StockDetailDescriptionCard(
                 description: _overview?.description ?? '',
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          NewsSentimentScreen(initialTicker: widget.symbol),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.newspaper_outlined),
+                label: const Text('News & Sentiment'),
               ),
             ],
             if (_errorMessage != null) ...[
