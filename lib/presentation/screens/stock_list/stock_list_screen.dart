@@ -6,6 +6,7 @@ import '../../../common/config/app_env.dart';
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
+import '../about/about_me_screen.dart';
 import '../stock_detail/stock_detail_screen.dart';
 
 class StockListScreen extends StatefulWidget {
@@ -139,7 +140,20 @@ class _StockListScreenState extends State<StockListScreen> {
     final query = _searchController.text.trim();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Stocks')),
+      appBar: AppBar(
+        title: const Text('Stocks'),
+        actions: [
+          IconButton(
+            tooltip: 'About Me',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const AboutMeScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
