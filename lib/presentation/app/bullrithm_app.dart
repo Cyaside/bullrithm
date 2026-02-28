@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../common/theme/app_theme.dart';
-import '../screens/stock_list/stock_list_screen.dart';
+import '../screens/shell/main_shell_screen.dart';
 
 class BullrithmApp extends StatelessWidget {
   const BullrithmApp({super.key});
@@ -14,7 +14,7 @@ class BullrithmApp extends StatelessWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
-      home: const StockListScreen(),
+      home: const MainShellScreen(),
     );
   }
 }

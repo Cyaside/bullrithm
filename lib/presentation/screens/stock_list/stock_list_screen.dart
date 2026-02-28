@@ -2,15 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../common/config/app_env.dart';
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
-import '../about/about_me_screen.dart';
 import '../stock_detail/stock_detail_screen.dart';
 
+enum MarketMoverTab { gainers, losers, active }
+
 class StockListScreen extends StatefulWidget {
-  const StockListScreen({super.key});
+  const StockListScreen({super.key, this.showScaffold = true});
+
+  final bool showScaffold;
 
   @override
   State<StockListScreen> createState() => _StockListScreenState();
@@ -31,16 +33,22 @@ class _StockListScreenState extends State<StockListScreen> {
   List<SearchResultItem> _results = const [];
   int _requestToken = 0;
 
+  MarketMoverTab _selectedMoverTab = MarketMoverTab.gainers;
+  bool _isMoversLoading = false;
+  String? _moversErrorMessage;
+  List<MarketMoverItem> _gainers = const [];
+  List<MarketMoverItem> _losers = const [];
+  List<MarketMoverItem> _active = const [];
+
   @override
   void initState() {
     super.initState();
 
-    if (AppEnv.hasAlphaVantageProxyUrl) {
+    try {
       _client = AlphaVantageClient.fromEnv();
-    } else {
-      _errorMessage =
-          'Proxy URL belum diisi. Jalankan dengan --dart-define='
-          'ALPHA_VANTAGE_PROXY_URL=https://<worker-url>/query';
+      _fetchMovers();
+    } catch (error) {
+      _errorMessage = 'Gagal inisialisasi data source: $error';
     }
   }
 
@@ -126,6 +134,58 @@ class _StockListScreenState extends State<StockListScreen> {
     }
   }
 
+  Future<void> _fetchMovers() async {
+    if (_client == null) return;
+
+    setState(() {
+      _isMoversLoading = true;
+      _moversErrorMessage = null;
+    });
+
+    try {
+      final raw = await _client!.fetchTopGainersLosers();
+      if (!mounted) return;
+
+      setState(() {
+        _gainers = _parseMovers(raw['top_gainers']);
+        _losers = _parseMovers(raw['top_losers']);
+        _active = _parseMovers(raw['most_actively_traded']);
+      });
+    } on AlphaVantageApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _moversErrorMessage = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _moversErrorMessage = 'Gagal memuat market movers.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isMoversLoading = false;
+        });
+      }
+    }
+  }
+
+  List<MarketMoverItem> _parseMovers(dynamic rawList) {
+    if (rawList is! List) return const [];
+    return rawList
+        .whereType<Map>()
+        .map(
+          (item) => MarketMoverItem(
+            symbol: (item['ticker'] ?? item['symbol'] ?? '').toString(),
+            price: _toDouble(item['price']),
+            changePercent: _parsePercent(item['change_percentage']),
+            volume: (item['volume'] ?? '-').toString(),
+          ),
+        )
+        .where((e) => e.symbol.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
   void _rememberQuery(String query) {
     _recentQueries.remove(query);
     _recentQueries.insert(0, query);
@@ -134,66 +194,88 @@ class _StockListScreenState extends State<StockListScreen> {
     }
   }
 
+  List<MarketMoverItem> get _selectedMovers {
+    switch (_selectedMoverTab) {
+      case MarketMoverTab.gainers:
+        return _gainers;
+      case MarketMoverTab.losers:
+        return _losers;
+      case MarketMoverTab.active:
+        return _active;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final query = _searchController.text.trim();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Stocks'),
-        actions: [
-          IconButton(
-            tooltip: 'About Me',
-            icon: const Icon(Icons.person_outline),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const AboutMeScreen()),
-              );
+    final body = ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      children: [
+        _TopHeader(
+          title: 'Market Overview',
+          subtitle: "Today's top performers",
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _searchController,
+          onChanged: _onQueryChanged,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
+            hintText: 'Cari ticker (AAPL, TSLA, MSFT...)',
+            suffixIcon: query.isEmpty
+                ? null
+                : IconButton(
+                    onPressed: () {
+                      _searchController.clear();
+                      _onQueryChanged('');
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Clear',
+                  ),
+          ),
+        ),
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 12),
+          _ErrorBanner(message: _errorMessage!),
+        ],
+        const SizedBox(height: 12),
+        if (query.isEmpty) ...[
+          SegmentedButton<MarketMoverTab>(
+            segments: const [
+              ButtonSegment<MarketMoverTab>(
+                value: MarketMoverTab.gainers,
+                label: Text('Gainers'),
+              ),
+              ButtonSegment<MarketMoverTab>(
+                value: MarketMoverTab.losers,
+                label: Text('Losers'),
+              ),
+              ButtonSegment<MarketMoverTab>(
+                value: MarketMoverTab.active,
+                label: Text('Active'),
+              ),
+            ],
+            selected: <MarketMoverTab>{_selectedMoverTab},
+            onSelectionChanged: (value) {
+              setState(() {
+                _selectedMoverTab = value.first;
+              });
             },
           ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text('Cari ticker saham', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            'SYMBOL_SEARCH dengan debounce 600ms untuk hemat kuota API.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.textTheme.bodySmall?.color,
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _searchController,
-            onChanged: _onQueryChanged,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'AAPL, TSLA, MSFT...',
-              suffixIcon: query.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        _searchController.clear();
-                        _onQueryChanged('');
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.close),
-                      tooltip: 'Clear',
-                    ),
-            ),
-          ),
-          if (_errorMessage != null) ...[
+          const SizedBox(height: 12),
+          if (_moversErrorMessage != null) ...[
+            _ErrorBanner(message: _moversErrorMessage!),
             const SizedBox(height: 12),
-            _ErrorBanner(message: _errorMessage!),
           ],
-          const SizedBox(height: 16),
-          if (_isLoading) ...[
-            const _LoadingList(),
-          ] else if (query.isEmpty) ...[
+          if (_isMoversLoading)
+            const _LoadingList()
+          else if (_selectedMovers.isNotEmpty)
+            _MarketMoverList(items: _selectedMovers)
+          else
             _RecentQueries(
               queries: _recentQueries,
               onTapQuery: (selectedQuery) {
@@ -205,12 +287,134 @@ class _StockListScreenState extends State<StockListScreen> {
                 setState(() {});
               },
             ),
+        ] else ...[
+          if (_isLoading) ...[
+            const _LoadingList(),
           ] else if (_results.isEmpty) ...[
             const _EmptyState(),
           ] else ...[
             _ResultList(results: _results),
           ],
         ],
+        const SizedBox(height: 8),
+        Text(
+          'Tap item untuk buka detail.',
+          style: theme.textTheme.bodySmall,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+
+    if (!widget.showScaffold) {
+      return SafeArea(child: body);
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Stocks')),
+      body: body,
+    );
+  }
+}
+
+class _TopHeader extends StatelessWidget {
+  const _TopHeader({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: theme.colorScheme.onPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MarketMoverList extends StatelessWidget {
+  const _MarketMoverList({required this.items});
+
+  final List<MarketMoverItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: items
+          .map((item) => _MarketMoverCard(item: item))
+          .toList(growable: false),
+    );
+  }
+}
+
+class _MarketMoverCard extends StatelessWidget {
+  const _MarketMoverCard({required this.item});
+
+  final MarketMoverItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final semantic = context.semanticColors;
+    final isUp = item.changePercent >= 0;
+    final color = isUp ? semantic.success : semantic.danger;
+    final prefix = isUp ? '+' : '';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 4,
+          ),
+          title: Text(item.symbol, style: theme.textTheme.titleLarge),
+          subtitle: Text(
+            'Vol: ${item.volume}',
+            style: theme.textTheme.bodySmall,
+          ),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '\$${item.price.toStringAsFixed(2)}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '$prefix${item.changePercent.toStringAsFixed(2)}%',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -246,7 +450,7 @@ class _ResultCard extends StatelessWidget {
     ];
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Card(
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(
@@ -286,7 +490,7 @@ class _LoadingList extends StatelessWidget {
       children: List.generate(
         4,
         (index) => const Padding(
-          padding: EdgeInsets.only(bottom: 10),
+          padding: EdgeInsets.only(bottom: 8),
           child: SizedBox(
             height: 76,
             child: Card(
@@ -405,4 +609,25 @@ class _RecentQueries extends StatelessWidget {
       ),
     );
   }
+}
+
+class MarketMoverItem {
+  const MarketMoverItem({
+    required this.symbol,
+    required this.price,
+    required this.changePercent,
+    required this.volume,
+  });
+
+  final String symbol;
+  final double price;
+  final double changePercent;
+  final String volume;
+}
+
+double _toDouble(Object? raw) => double.tryParse(raw?.toString() ?? '') ?? 0;
+
+double _parsePercent(Object? raw) {
+  final value = (raw?.toString() ?? '').replaceAll('%', '').trim();
+  return double.tryParse(value) ?? 0;
 }

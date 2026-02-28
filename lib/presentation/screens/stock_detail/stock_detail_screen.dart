@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../common/config/app_env.dart';
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
@@ -33,14 +32,12 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   void initState() {
     super.initState();
 
-    if (AppEnv.hasAlphaVantageProxyUrl) {
+    try {
       _client = AlphaVantageClient.fromEnv();
       _fetchData();
-    } else {
+    } catch (error) {
       _isLoading = false;
-      _errorMessage =
-          'Proxy URL belum diisi. Jalankan dengan --dart-define='
-          'ALPHA_VANTAGE_PROXY_URL=https://<worker-url>/query';
+      _errorMessage = 'Gagal inisialisasi data source: $error';
     }
   }
 

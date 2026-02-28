@@ -157,6 +157,17 @@ class AppTheme {
           borderSide: BorderSide(color: colorScheme.primary, width: 1.2),
         ),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: cardColor,
+        indicatorColor: colorScheme.primary.withValues(alpha: 0.14),
+        labelTextStyle: WidgetStatePropertyAll<TextStyle?>(textTheme.bodySmall),
+        iconTheme: WidgetStateProperty.resolveWith<IconThemeData?>((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? colorScheme.primary : textSecondary,
+          );
+        }),
+      ),
     );
   }
 }
