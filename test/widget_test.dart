@@ -6,7 +6,9 @@ void main() {
   testWidgets('app renders stock screen shell', (WidgetTester tester) async {
     await tester.pumpWidget(const BullrithmApp());
 
-    expect(find.text('Stocks'), findsOneWidget);
-    expect(find.text('Cari ticker saham'), findsOneWidget);
+    expect(find.text('Market Overview'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('News'), findsOneWidget);
+    expect(find.text('Me'), findsOneWidget);
   });
 }

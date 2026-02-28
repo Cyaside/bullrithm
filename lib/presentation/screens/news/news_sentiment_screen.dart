@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../common/config/app_env.dart';
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
@@ -9,9 +8,14 @@ import '../../../data/network/alpha_vantage_client.dart';
 enum NewsFilterMode { ticker, market }
 
 class NewsSentimentScreen extends StatefulWidget {
-  const NewsSentimentScreen({super.key, this.initialTicker});
+  const NewsSentimentScreen({
+    super.key,
+    this.initialTicker,
+    this.showScaffold = true,
+  });
 
   final String? initialTicker;
+  final bool showScaffold;
 
   @override
   State<NewsSentimentScreen> createState() => _NewsSentimentScreenState();
@@ -36,14 +40,12 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
     _tickerController.text = initial;
     _mode = initial.isEmpty ? NewsFilterMode.market : NewsFilterMode.ticker;
 
-    if (AppEnv.hasAlphaVantageProxyUrl) {
+    try {
       _client = AlphaVantageClient.fromEnv();
       _fetchNews();
-    } else {
+    } catch (error) {
       _isLoading = false;
-      _errorMessage =
-          'Proxy URL belum diisi. Jalankan dengan --dart-define='
-          'ALPHA_VANTAGE_PROXY_URL=https://<worker-url>/query';
+      _errorMessage = 'Gagal inisialisasi data source: $error';
     }
   }
 
@@ -126,90 +128,140 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
     final theme = Theme.of(context);
     final query = _tickerController.text.trim();
 
+    final content = RefreshIndicator(
+      onRefresh: _fetchNews,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        children: [
+          _TopHeader(
+            title: 'Latest News',
+            subtitle: 'Market insights & updates',
+          ),
+          const SizedBox(height: 12),
+          Text('Filter Berita', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 8),
+          SegmentedButton<NewsFilterMode>(
+            segments: const [
+              ButtonSegment<NewsFilterMode>(
+                value: NewsFilterMode.ticker,
+                label: Text('By Ticker'),
+                icon: Icon(Icons.sell_outlined),
+              ),
+              ButtonSegment<NewsFilterMode>(
+                value: NewsFilterMode.market,
+                label: Text('Market'),
+                icon: Icon(Icons.public),
+              ),
+            ],
+            selected: <NewsFilterMode>{_mode},
+            onSelectionChanged: (selection) {
+              setState(() {
+                _mode = selection.first;
+              });
+              _fetchNews();
+            },
+          ),
+          if (_mode == NewsFilterMode.ticker) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _tickerController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                hintText: 'Contoh: AAPL',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onSubmitted: (_) => _fetchNews(),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _fetchNews,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Apply Filter'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _lastUpdated == null
+                      ? 'Last updated: -'
+                      : 'Last updated: ${_formatDateTime(_lastUpdated!)}',
+                  style: theme.textTheme.bodySmall,
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ],
+          ),
+          if (_mode == NewsFilterMode.ticker && query.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Ticker aktif: $query', style: theme.textTheme.bodySmall),
+          ],
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            _NewsErrorBanner(message: _errorMessage!, onRetry: _fetchNews),
+          ],
+          const SizedBox(height: 16),
+          if (_isLoading && _items.isEmpty) ...[
+            const Center(child: CircularProgressIndicator()),
+          ] else if (_items.isEmpty) ...[
+            const _NewsEmptyState(),
+          ] else ...[
+            ..._items.map(
+              (item) =>
+                  _NewsCard(item: item, onTap: () => _openArticle(item.url)),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (!widget.showScaffold) {
+      return SafeArea(child: content);
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('News & Sentiment')),
-      body: RefreshIndicator(
-        onRefresh: _fetchNews,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text('Filter Berita', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            SegmentedButton<NewsFilterMode>(
-              segments: const [
-                ButtonSegment<NewsFilterMode>(
-                  value: NewsFilterMode.ticker,
-                  label: Text('By Ticker'),
-                  icon: Icon(Icons.sell_outlined),
-                ),
-                ButtonSegment<NewsFilterMode>(
-                  value: NewsFilterMode.market,
-                  label: Text('Market'),
-                  icon: Icon(Icons.public),
-                ),
-              ],
-              selected: <NewsFilterMode>{_mode},
-              onSelectionChanged: (selection) {
-                setState(() {
-                  _mode = selection.first;
-                });
-                _fetchNews();
-              },
+      body: content,
+    );
+  }
+}
+
+class _TopHeader extends StatelessWidget {
+  const _TopHeader({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: theme.colorScheme.onPrimary,
+              fontWeight: FontWeight.w700,
             ),
-            if (_mode == NewsFilterMode.ticker) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _tickerController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  hintText: 'Contoh: AAPL',
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onSubmitted: (_) => _fetchNews(),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                FilledButton.icon(
-                  onPressed: _fetchNews,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Apply Filter'),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _lastUpdated == null
-                        ? 'Last updated: -'
-                        : 'Last updated: ${_formatDateTime(_lastUpdated!)}',
-                    style: theme.textTheme.bodySmall,
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-              ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
             ),
-            if (_mode == NewsFilterMode.ticker && query.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('Ticker aktif: $query', style: theme.textTheme.bodySmall),
-            ],
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 12),
-              _NewsErrorBanner(message: _errorMessage!, onRetry: _fetchNews),
-            ],
-            const SizedBox(height: 16),
-            if (_isLoading && _items.isEmpty) ...[
-              const Center(child: CircularProgressIndicator()),
-            ] else if (_items.isEmpty) ...[
-              const _NewsEmptyState(),
-            ] else ...[
-              ..._items.map(
-                (item) =>
-                    _NewsCard(item: item, onTap: () => _openArticle(item.url)),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
