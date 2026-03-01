@@ -12,6 +12,21 @@ typedef LogFn = void Function(String message);
 enum MarketDataProvider { alphaProxy, alphaDirect }
 
 class AlphaVantageClient {
+  static const _maxCacheEntries = 200;
+  static const _defaultCacheTtl = Duration(minutes: 2);
+  static const Map<String, Duration> _cacheTtlByFunction = <String, Duration>{
+    'SYMBOL_SEARCH': Duration(hours: 6),
+    'OVERVIEW': Duration(hours: 24),
+    'TIME_SERIES_DAILY': Duration(hours: 2),
+    'NEWS_SENTIMENT': Duration(minutes: 10),
+    'TOP_GAINERS_LOSERS': Duration(minutes: 5),
+    'GLOBAL_QUOTE': Duration(minutes: 1),
+  };
+  static final Map<String, _CacheEntry> _responseCache =
+      <String, _CacheEntry>{};
+  static final Map<String, Future<Map<String, dynamic>>> _inFlightRequests =
+      <String, Future<Map<String, dynamic>>>{};
+
   AlphaVantageClient._({
     required MarketDataProvider provider,
     required http.Client httpClient,
@@ -156,21 +171,120 @@ class AlphaVantageClient {
   }
 
   Future<Map<String, dynamic>> _alphaQuery(Map<String, String> params) async {
-    if (_provider == MarketDataProvider.alphaProxy) {
-      try {
-        return await _queryViaProxy(params);
-      } on AlphaVantageApiException catch (error) {
-        if (_canFallbackDirect) {
-          _logger(
-            'Proxy request failed (${error.message}). Falling back to direct Alpha Vantage.',
-          );
-          return _queryDirect(params);
-        }
-        rethrow;
+    final normalizedParams = <String, String>{
+      for (final entry in params.entries) entry.key: entry.value,
+    };
+    final functionName =
+        (normalizedParams['function'] ?? '').trim().toUpperCase();
+    if (functionName.isNotEmpty) {
+      normalizedParams['function'] = functionName;
+    }
+
+    final cacheKey = _buildCacheKey(normalizedParams);
+    final ttl = _cacheTtlByFunction[functionName] ?? _defaultCacheTtl;
+    final now = DateTime.now();
+    final cached = _responseCache[cacheKey];
+    if (cached != null && now.isBefore(cached.cachedAt.add(ttl))) {
+      _logger('CACHE HIT $functionName');
+      return cached.payload;
+    }
+
+    final inflight = _inFlightRequests[cacheKey];
+    if (inflight != null) {
+      _logger('IN-FLIGHT REUSE $functionName');
+      return inflight;
+    }
+
+    final requestFuture = _queryAndCache(
+      normalizedParams,
+      cacheKey: cacheKey,
+      functionName: functionName,
+      staleCache: cached,
+    );
+    _inFlightRequests[cacheKey] = requestFuture;
+
+    try {
+      return await requestFuture;
+    } finally {
+      _inFlightRequests.remove(cacheKey);
+    }
+  }
+
+  Future<Map<String, dynamic>> _queryAndCache(
+    Map<String, String> params, {
+    required String cacheKey,
+    required String functionName,
+    required _CacheEntry? staleCache,
+  }) async {
+    try {
+      final result = await _queryFromNetwork(params);
+      _responseCache[cacheKey] = _CacheEntry(
+        payload: result,
+        cachedAt: DateTime.now(),
+      );
+      _evictCacheIfNeeded();
+      return result;
+    } on AlphaVantageApiException catch (error) {
+      if (staleCache != null) {
+        _logger(
+          'Serving stale cache for $functionName after error: ${error.message}',
+        );
+        return staleCache.payload;
       }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> _queryFromNetwork(Map<String, String> params) {
+    if (_provider == MarketDataProvider.alphaProxy) {
+      return _queryWithProxyFallback(params);
     }
 
     return _queryDirect(params);
+  }
+
+  Future<Map<String, dynamic>> _queryWithProxyFallback(
+    Map<String, String> params,
+  ) async {
+    try {
+      return await _queryViaProxy(params);
+    } on AlphaVantageApiException catch (error) {
+      if (error.isRateLimit) {
+        rethrow;
+      }
+      if (_canFallbackDirect) {
+        _logger(
+          'Proxy request failed (${error.message}). Falling back to direct Alpha Vantage.',
+        );
+        return _queryDirect(params);
+      }
+      rethrow;
+    }
+  }
+
+  void _evictCacheIfNeeded() {
+    if (_responseCache.length <= _maxCacheEntries) return;
+    final oldestEntry = _responseCache.entries.reduce(
+      (currentOldest, entry) =>
+          entry.value.cachedAt.isBefore(currentOldest.value.cachedAt)
+          ? entry
+          : currentOldest,
+    );
+    _responseCache.remove(oldestEntry.key);
+  }
+
+  String _buildCacheKey(Map<String, String> params) {
+    final pairs = params.entries.toList(growable: false)
+      ..sort((a, b) {
+        final byKey = a.key.compareTo(b.key);
+        if (byKey != 0) return byKey;
+        return a.value.compareTo(b.value);
+      });
+
+    final encoded = pairs
+        .map((entry) => '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}')
+        .join('&');
+    return encoded;
   }
 
   bool get _canFallbackDirect => _alphaApiKey?.trim().isNotEmpty ?? false;
@@ -281,4 +395,11 @@ class AlphaVantageApiException implements Exception {
   @override
   String toString() =>
       'AlphaVantageApiException(message: $message, isRateLimit: $isRateLimit)';
+}
+
+class _CacheEntry {
+  const _CacheEntry({required this.payload, required this.cachedAt});
+
+  final Map<String, dynamic> payload;
+  final DateTime cachedAt;
 }

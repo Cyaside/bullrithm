@@ -13,22 +13,38 @@ class MainShellScreen extends StatefulWidget {
 
 class _MainShellScreenState extends State<MainShellScreen> {
   int _selectedIndex = 0;
+  final Set<int> _loadedTabs = <int>{0};
 
-  static const _screens = <Widget>[
-    StockListScreen(showScaffold: false),
-    NewsSentimentScreen(showScaffold: false),
-    AboutMeScreen(showScaffold: false),
-  ];
+  Widget _buildScreen(int index) {
+    switch (index) {
+      case 0:
+        return const StockListScreen(showScaffold: false);
+      case 1:
+        return const NewsSentimentScreen(showScaffold: false);
+      case 2:
+      default:
+        return const AboutMeScreen(showScaffold: false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _screens),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: List<Widget>.generate(3, (index) {
+          if (!_loadedTabs.contains(index)) {
+            return const SizedBox.shrink();
+          }
+          return _buildScreen(index);
+        }),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
           setState(() {
             _selectedIndex = index;
+            _loadedTabs.add(index);
           });
         },
         destinations: const [
