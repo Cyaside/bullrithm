@@ -1,14 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
-import '../../../data/network/alpha_vantage_client.dart';
+import '../../../domain/domain.dart';
+import '../../controllers/stock_list_controller.dart';
 import '../../widgets/market_top_header.dart';
 import '../stock_detail/stock_detail_screen.dart';
-
-enum MarketMoverTab { gainers, losers, active }
 
 class StockListScreen extends StatefulWidget {
   const StockListScreen({super.key, this.showScaffold = true});
@@ -20,279 +17,144 @@ class StockListScreen extends StatefulWidget {
 }
 
 class _StockListScreenState extends State<StockListScreen> {
-  static const _debounceDuration = Duration(milliseconds: 600);
-  static const _maxRecentQueries = 10;
-
   final _searchController = TextEditingController();
-  final _queryCache = <String, List<SearchResultItem>>{};
-  final _recentQueries = <String>[];
-
-  Timer? _debounce;
-  AlphaVantageClient? _client;
-  bool _isLoading = false;
-  String? _errorMessage;
-  List<SearchResultItem> _results = const [];
-  int _requestToken = 0;
-
-  MarketMoverTab _selectedMoverTab = MarketMoverTab.gainers;
-  bool _isMoversLoading = false;
-  String? _moversErrorMessage;
-  List<MarketMoverItem> _gainers = const [];
-  List<MarketMoverItem> _losers = const [];
-  List<MarketMoverItem> _active = const [];
+  StockListController? _controller;
+  String? _initError;
 
   @override
   void initState() {
     super.initState();
 
     try {
-      _client = AlphaVantageClient.fromEnv();
-      _fetchMovers();
+      _controller = StockListController.fromEnv();
+      _controller!.initialize();
     } catch (error) {
-      _errorMessage = 'Gagal inisialisasi data source: $error';
+      _initError = 'Gagal inisialisasi data source: $error';
     }
   }
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _searchController.dispose();
-    _client?.dispose();
+    _controller?.dispose();
     super.dispose();
-  }
-
-  void _onQueryChanged(String value) {
-    setState(() {});
-    _debounce?.cancel();
-    _debounce = Timer(_debounceDuration, () => _search(value));
-  }
-
-  Future<void> _search(String query) async {
-    final normalized = query.trim();
-
-    if (_client == null) {
-      setState(() {
-        _isLoading = false;
-        _results = const [];
-      });
-      return;
-    }
-
-    if (normalized.isEmpty) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = null;
-        _results = const [];
-      });
-      return;
-    }
-
-    final cacheKey = normalized.toLowerCase();
-    final cached = _queryCache[cacheKey];
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      if (cached != null) {
-        _results = cached;
-      }
-    });
-
-    final currentToken = ++_requestToken;
-
-    try {
-      final fresh = await _client!.searchSymbols(normalized);
-      if (!mounted || currentToken != _requestToken) return;
-
-      _queryCache[cacheKey] = fresh;
-      _rememberQuery(normalized);
-      setState(() {
-        _results = fresh;
-      });
-    } on AlphaVantageApiException catch (error) {
-      if (!mounted || currentToken != _requestToken) return;
-
-      final fallback = _queryCache[cacheKey] ?? const <SearchResultItem>[];
-      setState(() {
-        _results = fallback;
-        if (fallback.isNotEmpty && error.isRateLimit) {
-          _errorMessage = 'Rate limit terkena, menampilkan hasil cache.';
-        } else {
-          _errorMessage = error.message;
-        }
-      });
-    } catch (_) {
-      if (!mounted || currentToken != _requestToken) return;
-      setState(() {
-        _errorMessage = 'Terjadi kesalahan saat memuat data saham.';
-      });
-    } finally {
-      if (mounted && currentToken == _requestToken) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _fetchMovers() async {
-    if (_client == null) return;
-
-    setState(() {
-      _isMoversLoading = true;
-      _moversErrorMessage = null;
-    });
-
-    try {
-      final raw = await _client!.fetchTopGainersLosers();
-      if (!mounted) return;
-
-      setState(() {
-        _gainers = _parseMovers(raw['top_gainers']);
-        _losers = _parseMovers(raw['top_losers']);
-        _active = _parseMovers(raw['most_actively_traded']);
-      });
-    } on AlphaVantageApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _moversErrorMessage = error.message;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _moversErrorMessage = 'Gagal memuat market movers.';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isMoversLoading = false;
-        });
-      }
-    }
-  }
-
-  List<MarketMoverItem> _parseMovers(dynamic rawList) {
-    if (rawList is! List) return const [];
-    return rawList
-        .whereType<Map>()
-        .map(
-          (item) => MarketMoverItem(
-            symbol: (item['ticker'] ?? item['symbol'] ?? '').toString(),
-            price: _toDouble(item['price']),
-            changePercent: _parsePercent(item['change_percentage']),
-            volume: (item['volume'] ?? '-').toString(),
-          ),
-        )
-        .where((e) => e.symbol.trim().isNotEmpty)
-        .toList(growable: false);
-  }
-
-  void _rememberQuery(String query) {
-    _recentQueries.remove(query);
-    _recentQueries.insert(0, query);
-    if (_recentQueries.length > _maxRecentQueries) {
-      _recentQueries.removeRange(_maxRecentQueries, _recentQueries.length);
-    }
-  }
-
-  List<MarketMoverItem> get _selectedMovers {
-    switch (_selectedMoverTab) {
-      case MarketMoverTab.gainers:
-        return _gainers;
-      case MarketMoverTab.losers:
-        return _losers;
-      case MarketMoverTab.active:
-        return _active;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final query = _searchController.text.trim();
+    final controller = _controller;
+    if (controller == null) {
+      return _buildInitError(context, _initError ?? 'Data source belum siap.');
+    }
 
+    final content = AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final query = controller.query.trim();
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          children: [
+            const MarketTopHeader(
+              title: 'Market Overview',
+              subtitle: "Today's top performers",
+            ),
+            const SizedBox(height: 12),
+            _SearchField(
+              controller: _searchController,
+              query: query,
+              onChanged: controller.onQueryChanged,
+              onClear: () {
+                _searchController.clear();
+                controller.clearQuery();
+              },
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<MarketMoverTab>(
+              segments: const [
+                ButtonSegment<MarketMoverTab>(
+                  value: MarketMoverTab.gainers,
+                  label: Text('Gainers'),
+                ),
+                ButtonSegment<MarketMoverTab>(
+                  value: MarketMoverTab.losers,
+                  label: Text('Losers'),
+                ),
+                ButtonSegment<MarketMoverTab>(
+                  value: MarketMoverTab.active,
+                  label: Text('Active'),
+                ),
+              ],
+              showSelectedIcon: false,
+              selected: <MarketMoverTab>{controller.selectedMoverTab},
+              onSelectionChanged: (value) {
+                controller.selectMoverTab(value.first);
+              },
+            ),
+            if (query.isEmpty && controller.moversErrorMessage != null) ...[
+              const SizedBox(height: 12),
+              _ErrorBanner(message: controller.moversErrorMessage!),
+            ],
+            if (query.isNotEmpty && controller.errorMessage != null) ...[
+              const SizedBox(height: 12),
+              _ErrorBanner(message: controller.errorMessage!),
+            ],
+            const SizedBox(height: 12),
+            if (query.isEmpty) ...[
+              if (controller.isMoversLoading)
+                const _LoadingList(itemHeight: 65, items: 7)
+              else if (controller.selectedMovers.isNotEmpty)
+                _MarketMoverList(items: controller.selectedMovers)
+              else
+                _RecentQueries(
+                  queries: controller.recentQueries,
+                  onTapQuery: (selectedQuery) {
+                    _searchController.text = selectedQuery;
+                    _searchController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: selectedQuery.length),
+                    );
+                    controller.onQueryChanged(selectedQuery);
+                  },
+                ),
+            ] else ...[
+              if (controller.isLoading)
+                const _LoadingList(itemHeight: 65, items: 4)
+              else if (controller.results.isNotEmpty)
+                _ResultList(results: controller.results)
+              else
+                const _EmptyState(),
+            ],
+          ],
+        );
+      },
+    );
+
+    if (!widget.showScaffold) {
+      return SafeArea(child: content);
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Stocks')),
+      body: content,
+    );
+  }
+
+  Widget _buildInitError(BuildContext context, String message) {
     final body = ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       children: [
         const MarketTopHeader(
           title: 'Market Overview',
           subtitle: "Today's top performers",
         ),
         const SizedBox(height: 12),
-        _SearchField(
-          controller: _searchController,
-          query: query,
-          onChanged: _onQueryChanged,
-          onClear: () {
-            _searchController.clear();
-            _onQueryChanged('');
-            setState(() {});
-          },
-        ),
-        const SizedBox(height: 12),
-        SegmentedButton<MarketMoverTab>(
-          segments: const [
-            ButtonSegment<MarketMoverTab>(
-              value: MarketMoverTab.gainers,
-              label: Text('Gainers'),
-            ),
-            ButtonSegment<MarketMoverTab>(
-              value: MarketMoverTab.losers,
-              label: Text('Losers'),
-            ),
-            ButtonSegment<MarketMoverTab>(
-              value: MarketMoverTab.active,
-              label: Text('Active'),
-            ),
-          ],
-          showSelectedIcon: false,
-          selected: <MarketMoverTab>{_selectedMoverTab},
-          onSelectionChanged: (value) {
-            setState(() {
-              _selectedMoverTab = value.first;
-            });
-          },
-        ),
-        if (query.isEmpty && _moversErrorMessage != null) ...[
-          const SizedBox(height: 12),
-          _ErrorBanner(message: _moversErrorMessage!),
-        ],
-        if (query.isNotEmpty && _errorMessage != null) ...[
-          const SizedBox(height: 12),
-          _ErrorBanner(message: _errorMessage!),
-        ],
-        const SizedBox(height: 12),
-        if (query.isEmpty) ...[
-          if (_isMoversLoading)
-            const _LoadingList(itemHeight: 65, items: 7)
-          else if (_selectedMovers.isNotEmpty)
-            _MarketMoverList(items: _selectedMovers)
-          else
-            _RecentQueries(
-              queries: _recentQueries,
-              onTapQuery: (selectedQuery) {
-                _searchController.text = selectedQuery;
-                _searchController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: selectedQuery.length),
-                );
-                _onQueryChanged(selectedQuery);
-                setState(() {});
-              },
-            ),
-        ] else ...[
-          if (_isLoading)
-            const _LoadingList(itemHeight: 65, items: 4)
-          else if (_results.isNotEmpty)
-            _ResultList(results: _results)
-          else
-            const _EmptyState(),
-        ],
+        _ErrorBanner(message: message),
       ],
     );
 
     if (!widget.showScaffold) {
       return SafeArea(child: body);
     }
-
     return Scaffold(
       appBar: AppBar(title: const Text('Stocks')),
       body: body,
@@ -664,25 +526,4 @@ class _RecentQueries extends StatelessWidget {
       ),
     );
   }
-}
-
-class MarketMoverItem {
-  const MarketMoverItem({
-    required this.symbol,
-    required this.price,
-    required this.changePercent,
-    required this.volume,
-  });
-
-  final String symbol;
-  final double price;
-  final double changePercent;
-  final String volume;
-}
-
-double _toDouble(Object? raw) => double.tryParse(raw?.toString() ?? '') ?? 0;
-
-double _parsePercent(Object? raw) {
-  final value = (raw?.toString() ?? '').replaceAll('%', '').trim();
-  return double.tryParse(value) ?? 0;
 }

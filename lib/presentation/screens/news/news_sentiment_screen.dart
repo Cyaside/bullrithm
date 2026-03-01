@@ -3,7 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
-import '../../../data/network/alpha_vantage_client.dart';
+import '../../controllers/news_sentiment_controller.dart';
 import '../../widgets/market_top_header.dart';
 
 class NewsSentimentScreen extends StatefulWidget {
@@ -16,68 +16,25 @@ class NewsSentimentScreen extends StatefulWidget {
 }
 
 class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
-  AlphaVantageClient? _client;
-
-  List<NewsItem> _items = const [];
-  NewsSentimentFilter _filter = NewsSentimentFilter.all;
-  bool _isLoading = true;
-  String? _errorMessage;
-  DateTime? _lastUpdated;
-  int _requestToken = 0;
+  NewsSentimentController? _controller;
+  String? _initError;
 
   @override
   void initState() {
     super.initState();
 
     try {
-      _client = AlphaVantageClient.fromEnv();
-      _fetchNews();
+      _controller = NewsSentimentController.fromEnv();
+      _controller!.initialize();
     } catch (error) {
-      _isLoading = false;
-      _errorMessage = 'Gagal inisialisasi data source: $error';
+      _initError = 'Gagal inisialisasi data source: $error';
     }
   }
 
   @override
   void dispose() {
-    _client?.dispose();
+    _controller?.dispose();
     super.dispose();
-  }
-
-  Future<void> _fetchNews() async {
-    if (_client == null) return;
-
-    final currentToken = ++_requestToken;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final items = await _client!.fetchNewsSentiment(limit: 1000);
-      if (!mounted || currentToken != _requestToken) return;
-
-      setState(() {
-        _items = items;
-        _lastUpdated = DateTime.now();
-      });
-    } on AlphaVantageApiException catch (error) {
-      if (!mounted || currentToken != _requestToken) return;
-      setState(() {
-        _errorMessage = error.message;
-      });
-    } catch (_) {
-      if (!mounted || currentToken != _requestToken) return;
-      setState(() {
-        _errorMessage = 'Gagal memuat berita dan sentimen.';
-      });
-    } finally {
-      if (mounted && currentToken == _requestToken) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
   }
 
   Future<void> _openArticle(String url) async {
@@ -99,56 +56,60 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
     }
   }
 
-  List<NewsItem> get _filteredItems {
-    if (_filter == NewsSentimentFilter.all) return _items;
-    return _items
-        .where((item) => _matchesFilter(_classifySentiment(item), _filter))
-        .toList(growable: false);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final filteredItems = _filteredItems;
+    final controller = _controller;
+    if (controller == null) {
+      return _buildInitError(context, _initError ?? 'Data source belum siap.');
+    }
 
-    final content = RefreshIndicator(
-      onRefresh: _fetchNews,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        children: [
-          const MarketTopHeader(
-            title: 'Latest News',
-            subtitle: 'Market insights & updates',
+    final content = AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final filteredItems = controller.filteredItems;
+
+        return RefreshIndicator(
+          onRefresh: controller.fetchNews,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            children: [
+              const MarketTopHeader(
+                title: 'Latest News',
+                subtitle: 'Market insights & updates',
+              ),
+              const SizedBox(height: 12),
+              _NewsToolbar(
+                lastUpdated: controller.lastUpdated,
+                isLoading: controller.isLoading,
+                selectedFilter: controller.filter,
+                onFilterChanged: controller.setFilter,
+                onRefresh: controller.fetchNews,
+              ),
+              if (controller.errorMessage != null) ...[
+                const SizedBox(height: 12),
+                _NewsErrorBanner(
+                  message: controller.errorMessage!,
+                  onRetry: controller.fetchNews,
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (controller.isLoading && controller.items.isEmpty) ...[
+                const _NewsLoadingList(),
+              ] else if (filteredItems.isEmpty) ...[
+                _NewsEmptyState(filter: controller.filter),
+              ] else ...[
+                ...filteredItems.map(
+                  (item) => _NewsCard(
+                    item: item,
+                    onTap: () => _openArticle(item.url),
+                  ),
+                ),
+              ],
+            ],
           ),
-          const SizedBox(height: 12),
-          _NewsToolbar(
-            lastUpdated: _lastUpdated,
-            isLoading: _isLoading,
-            selectedFilter: _filter,
-            onFilterChanged: (filter) {
-              setState(() {
-                _filter = filter;
-              });
-            },
-            onRefresh: _fetchNews,
-          ),
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
-            _NewsErrorBanner(message: _errorMessage!, onRetry: _fetchNews),
-          ],
-          const SizedBox(height: 12),
-          if (_isLoading && _items.isEmpty) ...[
-            const _NewsLoadingList(),
-          ] else if (filteredItems.isEmpty) ...[
-            _NewsEmptyState(filter: _filter),
-          ] else ...[
-            ...filteredItems.map(
-              (item) =>
-                  _NewsCard(item: item, onTap: () => _openArticle(item.url)),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
 
     if (!widget.showScaffold) {
@@ -158,6 +119,35 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('News & Sentiment')),
       body: content,
+    );
+  }
+
+  Widget _buildInitError(BuildContext context, String message) {
+    final body = ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      children: [
+        const MarketTopHeader(
+          title: 'Latest News',
+          subtitle: 'Market insights & updates',
+        ),
+        const SizedBox(height: 12),
+        _NewsErrorBanner(
+          message: message,
+          onRetry: () async {
+            if (_controller != null) {
+              await _controller!.fetchNews();
+            }
+          },
+        ),
+      ],
+    );
+
+    if (!widget.showScaffold) {
+      return SafeArea(child: body);
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('News & Sentiment')),
+      body: body,
     );
   }
 }
@@ -227,72 +217,6 @@ class _NewsToolbar extends StatelessWidget {
   }
 }
 
-enum NewsSentimentFilter {
-  all('All'),
-  bullish('Bullish'),
-  somewhatBullish('Somewhat Bullish'),
-  neutral('Neutral'),
-  somewhatBearish('Somewhat Bearish'),
-  bearish('Bearish');
-
-  const NewsSentimentFilter(this.label);
-  final String label;
-}
-
-enum SentimentBucket {
-  bullish('BULLISH'),
-  somewhatBullish('SOMEWHAT BULLISH'),
-  neutral('NEUTRAL'),
-  somewhatBearish('SOMEWHAT BEARISH'),
-  bearish('BEARISH');
-
-  const SentimentBucket(this.label);
-  final String label;
-}
-
-bool _matchesFilter(SentimentBucket bucket, NewsSentimentFilter filter) {
-  switch (filter) {
-    case NewsSentimentFilter.all:
-      return true;
-    case NewsSentimentFilter.bullish:
-      return bucket == SentimentBucket.bullish;
-    case NewsSentimentFilter.somewhatBullish:
-      return bucket == SentimentBucket.somewhatBullish;
-    case NewsSentimentFilter.neutral:
-      return bucket == SentimentBucket.neutral;
-    case NewsSentimentFilter.somewhatBearish:
-      return bucket == SentimentBucket.somewhatBearish;
-    case NewsSentimentFilter.bearish:
-      return bucket == SentimentBucket.bearish;
-  }
-}
-
-SentimentBucket _classifySentiment(NewsItem item) {
-  final rawLabel = item.overallSentimentLabel.trim().toUpperCase();
-  final normalized = rawLabel
-      .replaceAll('-', ' ')
-      .replaceAll('_', ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-
-  if (normalized.contains('SOMEWHAT BULLISH')) {
-    return SentimentBucket.somewhatBullish;
-  }
-  if (normalized == 'BULLISH') return SentimentBucket.bullish;
-  if (normalized.contains('SOMEWHAT BEARISH')) {
-    return SentimentBucket.somewhatBearish;
-  }
-  if (normalized == 'BEARISH') return SentimentBucket.bearish;
-  if (normalized == 'NEUTRAL') return SentimentBucket.neutral;
-
-  final score = item.overallSentimentScore ?? 0;
-  if (score >= 0.35) return SentimentBucket.bullish;
-  if (score > 0.05) return SentimentBucket.somewhatBullish;
-  if (score <= -0.35) return SentimentBucket.bearish;
-  if (score < -0.05) return SentimentBucket.somewhatBearish;
-  return SentimentBucket.neutral;
-}
-
 class _SentimentTheme {
   const _SentimentTheme({
     required this.label,
@@ -307,7 +231,7 @@ class _SentimentTheme {
 
 _SentimentTheme _sentimentTheme(BuildContext context, NewsItem item) {
   final semantic = context.semanticColors;
-  final bucket = _classifySentiment(item);
+  final bucket = classifySentiment(item);
   final score = item.overallSentimentScore ?? 0;
   final label = '${bucket.label} (${score.toStringAsFixed(2)})';
 
