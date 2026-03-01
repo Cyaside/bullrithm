@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../common/theme/app_theme.dart';
 import '../../widgets/market_top_header.dart';
@@ -25,7 +29,9 @@ class HomePageScreen extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const _HeroBanner(),
-        SizedBox(height: 14),
+        const SizedBox(height: 12),
+        const _DailyMotivationCard(),
+        const SizedBox(height: 14),
         const _HomeSectionTitle(
           title: 'Explore',
           subtitle: 'Quickly jump into the right section.',
@@ -347,4 +353,139 @@ class _WorkflowRow extends StatelessWidget {
       ],
     );
   }
+}
+
+class _DailyMotivationCard extends StatefulWidget {
+  const _DailyMotivationCard();
+
+  @override
+  State<_DailyMotivationCard> createState() => _DailyMotivationCardState();
+}
+
+class _DailyMotivationCardState extends State<_DailyMotivationCard> {
+  static const _cacheDateKey = 'daily_motivation_date_v1';
+  static const _cacheContentKey = 'daily_motivation_content_v1';
+  static const _cacheAuthorKey = 'daily_motivation_author_v1';
+
+  late final Future<_MotivationQuote?> _quoteFuture = _loadQuote();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return FutureBuilder<_MotivationQuote?>(
+      future: _quoteFuture,
+      builder: (context, snapshot) {
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final quote = snapshot.data;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (isLoading)
+                  Text(
+                    'Loading quote...',
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  )
+                else if (quote == null)
+                  Text(
+                    'Daily quote unavailable right now.',
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  )
+                else ...[
+                  Text(
+                    '"${quote.content}"',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '~ ${quote.author}',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<_MotivationQuote?> _loadQuote() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _formatDate(DateTime.now());
+
+    final cachedDate = prefs.getString(_cacheDateKey)?.trim() ?? '';
+    final cachedContent = prefs.getString(_cacheContentKey)?.trim() ?? '';
+    final cachedAuthor = prefs.getString(_cacheAuthorKey)?.trim() ?? '';
+
+    if (cachedDate == today && cachedContent.isNotEmpty) {
+      return _MotivationQuote(
+        content: cachedContent,
+        author: cachedAuthor.isEmpty ? 'Unknown' : cachedAuthor,
+      );
+    }
+
+    try {
+      final uri = Uri.parse('https://zenquotes.io/api/random');
+      final response = await http
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is List && decoded.isNotEmpty && decoded.first is Map) {
+          final first = (decoded.first as Map).map(
+            (key, value) => MapEntry('$key', value),
+          );
+          final content = (first['q'] as String?)?.trim() ?? '';
+          final author = (first['a'] as String?)?.trim() ?? 'Unknown';
+          if (content.isNotEmpty) {
+            await prefs.setString(_cacheDateKey, today);
+            await prefs.setString(_cacheContentKey, content);
+            await prefs.setString(_cacheAuthorKey, author);
+            return _MotivationQuote(content: content, author: author);
+          }
+        }
+      }
+    } catch (_) {
+      // Error handled by returning null/cache.
+    }
+
+    if (cachedContent.isNotEmpty) {
+      return _MotivationQuote(
+        content: cachedContent,
+        author: cachedAuthor.isEmpty ? 'Unknown' : cachedAuthor,
+      );
+    }
+    return null;
+  }
+
+  String _formatDate(DateTime value) {
+    final y = value.year.toString().padLeft(4, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    final d = value.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+}
+
+class _MotivationQuote {
+  const _MotivationQuote({required this.content, required this.author});
+
+  final String content;
+  final String author;
 }

@@ -56,6 +56,7 @@ class AlphaVantageClient {
     final client = httpClient ?? http.Client();
     final outputLogger = logger ?? _defaultLogger;
     _warmUpPersistentCache();
+    final effectiveApiKey = AppEnv.effectiveAlphaVantageApiKey;
 
     if (AppEnv.hasAlphaVantageProxyUrl) {
       return AlphaVantageClient._(
@@ -64,24 +65,22 @@ class AlphaVantageClient {
         logger: outputLogger,
         timeout: timeout,
         proxyBaseUrl: AppEnv.alphaVantageProxyUrl.trim(),
-        alphaApiKey: AppEnv.hasAlphaVantageApiKey
-            ? AppEnv.alphaVantageApiKey.trim()
-            : null,
+        alphaApiKey: effectiveApiKey,
       );
     }
 
-    if (AppEnv.hasAlphaVantageApiKey) {
+    if (effectiveApiKey != null && effectiveApiKey.isNotEmpty) {
       return AlphaVantageClient._(
         provider: MarketDataProvider.alphaDirect,
         httpClient: client,
         logger: outputLogger,
         timeout: timeout,
-        alphaApiKey: AppEnv.alphaVantageApiKey.trim(),
+        alphaApiKey: effectiveApiKey,
       );
     }
 
     throw const AlphaVantageApiException(
-      'ALPHA_VANTAGE_PROXY_URL or ALPHA_VANTAGE_API_KEY is not configured.',
+      'ALPHA_VANTAGE_PROXY_URL or effective ALPHA_VANTAGE_API_KEY is not configured.',
     );
   }
 
@@ -184,8 +183,9 @@ class AlphaVantageClient {
     final normalizedParams = <String, String>{
       for (final entry in params.entries) entry.key: entry.value,
     };
-    final functionName =
-        (normalizedParams['function'] ?? '').trim().toUpperCase();
+    final functionName = (normalizedParams['function'] ?? '')
+        .trim()
+        .toUpperCase();
     if (functionName.isNotEmpty) {
       normalizedParams['function'] = functionName;
     }
@@ -286,12 +286,19 @@ class AlphaVantageClient {
       });
 
     final encoded = pairs
-        .map((entry) => '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}')
+        .map(
+          (entry) =>
+              '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}',
+        )
         .join('&');
     return encoded;
   }
 
-  bool get _canFallbackDirect => _alphaApiKey?.trim().isNotEmpty ?? false;
+  bool get _canFallbackDirect {
+    final runtimeOrCompile = AppEnv.effectiveAlphaVantageApiKey?.trim() ?? '';
+    if (runtimeOrCompile.isNotEmpty) return true;
+    return _alphaApiKey?.trim().isNotEmpty ?? false;
+  }
 
   static void _warmUpPersistentCache() {
     _cacheLoadFuture ??= _loadCacheFromDisk();
@@ -351,9 +358,7 @@ class AlphaVantageClient {
     try {
       final prefs = await SharedPreferences.getInstance();
       final entries = _responseCache.entries.toList(growable: false)
-        ..sort(
-          (a, b) => b.value.cachedAt.compareTo(a.value.cachedAt),
-        );
+        ..sort((a, b) => b.value.cachedAt.compareTo(a.value.cachedAt));
 
       final limited = entries.take(_maxPersistedEntries);
       final serializable = <String, dynamic>{};
@@ -392,7 +397,9 @@ class AlphaVantageClient {
   }
 
   Future<Map<String, dynamic>> _queryDirect(Map<String, String> params) {
-    final key = _alphaApiKey?.trim() ?? '';
+    final key = (AppEnv.effectiveAlphaVantageApiKey?.trim().isNotEmpty ?? false)
+        ? AppEnv.effectiveAlphaVantageApiKey!.trim()
+        : (_alphaApiKey?.trim() ?? '');
     if (key.isEmpty) {
       throw const AlphaVantageApiException('Alpha API key not configured.');
     }

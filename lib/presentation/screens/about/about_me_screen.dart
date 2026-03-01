@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../../common/config/app_env.dart';
 import 'components/components.dart';
 import '../../widgets/market_top_header.dart';
 
@@ -263,6 +264,17 @@ class _AboutMeScreenState extends State<AboutMeScreen> {
           icon: const Icon(Icons.edit_outlined),
           label: const Text('Edit Profile'),
         ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _openApiKeyDialog,
+          icon: const Icon(Icons.vpn_key_outlined),
+          label: const Text('Set Alpha Vantage API Key'),
+        ),
+        const SizedBox(height: 8),
+        _ApiKeyStatusCard(
+          runtimeKey: AppEnv.runtimeAlphaVantageApiKey,
+          effectiveKey: AppEnv.effectiveAlphaVantageApiKey,
+        ),
       ],
     );
 
@@ -287,6 +299,91 @@ class _AboutMeScreenState extends State<AboutMeScreen> {
     );
   }
 
+  Future<void> _openApiKeyDialog() async {
+    final controller = TextEditingController(
+      text: AppEnv.runtimeAlphaVantageApiKey ?? '',
+    );
+    const clearSentinel = '__CLEAR_OVERRIDE__';
+
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Alpha Vantage API Key'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Key ini disimpan lokal di perangkat.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'API Key',
+                  hintText: 'Masukkan API key Alpha Vantage',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(clearSentinel),
+              child: const Text('Use Deployment Key'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(null),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    if (result == clearSentinel) {
+      await AppEnv.setRuntimeAlphaVantageApiKey(null);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kembali menggunakan deployment API key.'),
+        ),
+      );
+      return;
+    }
+
+    if (result.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('API key tidak boleh kosong.')),
+      );
+      return;
+    }
+
+    await AppEnv.setRuntimeAlphaVantageApiKey(result.trim());
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'API key tersimpan. Restart aplikasi agar semua tab memakai key baru.',
+        ),
+      ),
+    );
+  }
+
   Future<void> _openExternal(BuildContext context, String url) async {
     final uri = Uri.tryParse(url);
     if (url.trim().isEmpty || uri == null) {
@@ -302,6 +399,60 @@ class _AboutMeScreenState extends State<AboutMeScreen> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Gagal membuka link.')));
     }
+  }
+}
+
+class _ApiKeyStatusCard extends StatelessWidget {
+  const _ApiKeyStatusCard({
+    required this.runtimeKey,
+    required this.effectiveKey,
+  });
+
+  final String? runtimeKey;
+  final String? effectiveKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasRuntime = runtimeKey != null && runtimeKey!.trim().isNotEmpty;
+    final hasEffective =
+        effectiveKey != null && effectiveKey!.trim().isNotEmpty;
+
+    final status = hasRuntime
+        ? 'Custom API key aktif'
+        : hasEffective
+        ? 'Menggunakan deployment API key'
+        : 'API key belum terkonfigurasi';
+
+    final preview = _maskKey(effectiveKey);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Alpha Vantage Key',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(status, style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 2),
+            Text('Key: $preview', style: theme.textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _maskKey(String? value) {
+    final key = value?.trim() ?? '';
+    if (key.isEmpty) return '-';
+    if (key.length <= 6) return '*' * key.length;
+    return '${key.substring(0, 3)}***${key.substring(key.length - 3)}';
   }
 }
 
