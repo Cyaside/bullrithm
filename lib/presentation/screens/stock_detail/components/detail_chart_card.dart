@@ -23,23 +23,24 @@ class StockDetailChartCard extends StatelessWidget {
           children: [
             Text('Price Chart (30D)', style: theme.textTheme.titleLarge),
             const SizedBox(height: 12),
-            if (points.length < 2)
-              SizedBox(
-                height: 150,
-                child: Center(
-                  child: Text(
-                    'Data chart tidak tersedia',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              )
-            else
-              _BarChart(
-                values: _compressPoints(points),
-                activeColor: theme.colorScheme.primary,
-                passiveColor: semantic.surfaceMuted,
-                borderColor: semantic.border,
-              ),
+            SizedBox(
+              height: 180,
+              child: points.length < 2
+                  ? Center(
+                      child: Text(
+                        'Data chart tidak tersedia',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    )
+                  : CustomPaint(
+                      painter: _LineChartPainter(
+                        points: points,
+                        lineColor: theme.colorScheme.primary,
+                        gridColor: semantic.chartGrid,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+            ),
           ],
         ),
       ),
@@ -47,81 +48,70 @@ class StockDetailChartCard extends StatelessWidget {
   }
 }
 
-class _BarChart extends StatelessWidget {
-  const _BarChart({
-    required this.values,
-    required this.activeColor,
-    required this.passiveColor,
-    required this.borderColor,
+class _LineChartPainter extends CustomPainter {
+  _LineChartPainter({
+    required this.points,
+    required this.lineColor,
+    required this.gridColor,
   });
 
-  final List<double> values;
-  final Color activeColor;
-  final Color passiveColor;
-  final Color borderColor;
+  final List<DailyPricePoint> points;
+  final Color lineColor;
+  final Color gridColor;
 
   @override
-  Widget build(BuildContext context) {
-    final maxValue = values.reduce(math.max);
-    final minValue = values.reduce(math.min);
-    final range = math.max(maxValue - minValue, 0.0001);
-
-    return Container(
-      height: 150,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: values
-            .asMap()
-            .entries
-            .map((entry) {
-              final index = entry.key;
-              final value = entry.value;
-              final normalized = ((value - minValue) / range).clamp(0.0, 1.0);
-              final barHeight = 28.0 + (72.0 * normalized);
-              final isActive = index == values.length - 1;
-
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Container(
-                    height: barHeight,
-                    decoration: BoxDecoration(
-                      color: isActive ? activeColor : passiveColor,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                ),
-              );
-            })
-            .toList(growable: false),
-      ),
+  void paint(Canvas canvas, Size size) {
+    const padding = 8.0;
+    final chartRect = Rect.fromLTWH(
+      padding,
+      padding,
+      math.max(0, size.width - (padding * 2)),
+      math.max(0, size.height - (padding * 2)),
     );
+
+    final minClose = points.map((e) => e.close).reduce(math.min);
+    final maxClose = points.map((e) => e.close).reduce(math.max);
+    final range = math.max(maxClose - minClose, 0.0001);
+
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+
+    for (var i = 0; i < 4; i++) {
+      final y = chartRect.top + chartRect.height * (i / 3);
+      canvas.drawLine(
+        Offset(chartRect.left, y),
+        Offset(chartRect.right, y),
+        gridPaint,
+      );
+    }
+
+    final linePaint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final path = Path();
+    for (var i = 0; i < points.length; i++) {
+      final dx = chartRect.left + (chartRect.width * (i / (points.length - 1)));
+      final norm = (points[i].close - minClose) / range;
+      final dy = chartRect.bottom - (chartRect.height * norm);
+      if (i == 0) {
+        path.moveTo(dx, dy);
+      } else {
+        path.lineTo(dx, dy);
+      }
+    }
+
+    canvas.drawPath(path, linePaint);
   }
-}
 
-List<double> _compressPoints(List<DailyPricePoint> points) {
-  const targetBars = 8;
-  if (points.length <= targetBars) {
-    return points.map((point) => point.close).toList(growable: false);
+  @override
+  bool shouldRepaint(covariant _LineChartPainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.lineColor != lineColor ||
+        oldDelegate.gridColor != gridColor;
   }
-
-  final bucketSize = points.length / targetBars;
-  final values = <double>[];
-
-  for (var i = 0; i < targetBars; i++) {
-    final start = (i * bucketSize).floor();
-    final end = math.min(points.length, ((i + 1) * bucketSize).ceil());
-    final bucket = points.sublist(start, end);
-    final average =
-        bucket.map((item) => item.close).reduce((a, b) => a + b) /
-        bucket.length;
-    values.add(average);
-  }
-
-  return values;
 }

@@ -19,6 +19,7 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
   AlphaVantageClient? _client;
 
   List<NewsItem> _items = const [];
+  NewsSentimentFilter _filter = NewsSentimentFilter.all;
   bool _isLoading = true;
   String? _errorMessage;
   DateTime? _lastUpdated;
@@ -98,8 +99,17 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
     }
   }
 
+  List<NewsItem> get _filteredItems {
+    if (_filter == NewsSentimentFilter.all) return _items;
+    return _items
+        .where((item) => _matchesFilter(_classifySentiment(item), _filter))
+        .toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final filteredItems = _filteredItems;
+
     final content = RefreshIndicator(
       onRefresh: _fetchNews,
       child: ListView(
@@ -114,6 +124,12 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
           _NewsToolbar(
             lastUpdated: _lastUpdated,
             isLoading: _isLoading,
+            selectedFilter: _filter,
+            onFilterChanged: (filter) {
+              setState(() {
+                _filter = filter;
+              });
+            },
             onRefresh: _fetchNews,
           ),
           if (_errorMessage != null) ...[
@@ -123,10 +139,10 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
           const SizedBox(height: 12),
           if (_isLoading && _items.isEmpty) ...[
             const _NewsLoadingList(),
-          ] else if (_items.isEmpty) ...[
-            const _NewsEmptyState(),
+          ] else if (filteredItems.isEmpty) ...[
+            _NewsEmptyState(filter: _filter),
           ] else ...[
-            ..._items.map(
+            ...filteredItems.map(
               (item) =>
                   _NewsCard(item: item, onTap: () => _openArticle(item.url)),
             ),
@@ -150,36 +166,182 @@ class _NewsToolbar extends StatelessWidget {
   const _NewsToolbar({
     required this.lastUpdated,
     required this.isLoading,
+    required this.selectedFilter,
+    required this.onFilterChanged,
     required this.onRefresh,
   });
 
   final DateTime? lastUpdated;
   final bool isLoading;
+  final NewsSentimentFilter selectedFilter;
+  final ValueChanged<NewsSentimentFilter> onFilterChanged;
   final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FilledButton.tonalIcon(
-          onPressed: isLoading ? null : () => onRefresh(),
-          icon: const Icon(Icons.tune_rounded, size: 16),
-          label: const Text('Apply Filter'),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            lastUpdated == null
-                ? 'Last updated: -'
-                : 'Last updated: ${_formatDateTime(lastUpdated!)}',
-            style: theme.textTheme.bodySmall,
-            textAlign: TextAlign.right,
+        SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: NewsSentimentFilter.values
+                .map(
+                  (filter) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(filter.label),
+                      selected: selectedFilter == filter,
+                      onSelected: (_) => onFilterChanged(filter),
+                    ),
+                  ),
+                )
+                .toList(growable: false),
           ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: isLoading ? null : () => onRefresh(),
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Refresh News'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                lastUpdated == null
+                    ? 'Last updated: -'
+                    : 'Last updated: ${_formatDateTime(lastUpdated!)}',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ],
         ),
       ],
     );
+  }
+}
+
+enum NewsSentimentFilter {
+  all('All'),
+  bullish('Bullish'),
+  somewhatBullish('Somewhat Bullish'),
+  neutral('Neutral'),
+  somewhatBearish('Somewhat Bearish'),
+  bearish('Bearish');
+
+  const NewsSentimentFilter(this.label);
+  final String label;
+}
+
+enum SentimentBucket {
+  bullish('BULLISH'),
+  somewhatBullish('SOMEWHAT BULLISH'),
+  neutral('NEUTRAL'),
+  somewhatBearish('SOMEWHAT BEARISH'),
+  bearish('BEARISH');
+
+  const SentimentBucket(this.label);
+  final String label;
+}
+
+bool _matchesFilter(SentimentBucket bucket, NewsSentimentFilter filter) {
+  switch (filter) {
+    case NewsSentimentFilter.all:
+      return true;
+    case NewsSentimentFilter.bullish:
+      return bucket == SentimentBucket.bullish;
+    case NewsSentimentFilter.somewhatBullish:
+      return bucket == SentimentBucket.somewhatBullish;
+    case NewsSentimentFilter.neutral:
+      return bucket == SentimentBucket.neutral;
+    case NewsSentimentFilter.somewhatBearish:
+      return bucket == SentimentBucket.somewhatBearish;
+    case NewsSentimentFilter.bearish:
+      return bucket == SentimentBucket.bearish;
+  }
+}
+
+SentimentBucket _classifySentiment(NewsItem item) {
+  final rawLabel = item.overallSentimentLabel.trim().toUpperCase();
+  final normalized = rawLabel
+      .replaceAll('-', ' ')
+      .replaceAll('_', ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  if (normalized.contains('SOMEWHAT BULLISH')) {
+    return SentimentBucket.somewhatBullish;
+  }
+  if (normalized == 'BULLISH') return SentimentBucket.bullish;
+  if (normalized.contains('SOMEWHAT BEARISH')) {
+    return SentimentBucket.somewhatBearish;
+  }
+  if (normalized == 'BEARISH') return SentimentBucket.bearish;
+  if (normalized == 'NEUTRAL') return SentimentBucket.neutral;
+
+  final score = item.overallSentimentScore ?? 0;
+  if (score >= 0.35) return SentimentBucket.bullish;
+  if (score > 0.05) return SentimentBucket.somewhatBullish;
+  if (score <= -0.35) return SentimentBucket.bearish;
+  if (score < -0.05) return SentimentBucket.somewhatBearish;
+  return SentimentBucket.neutral;
+}
+
+class _SentimentTheme {
+  const _SentimentTheme({
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
+}
+
+_SentimentTheme _sentimentTheme(BuildContext context, NewsItem item) {
+  final semantic = context.semanticColors;
+  final bucket = _classifySentiment(item);
+  final score = item.overallSentimentScore ?? 0;
+  final label = '${bucket.label} (${score.toStringAsFixed(2)})';
+
+  switch (bucket) {
+    case SentimentBucket.bullish:
+      return _SentimentTheme(
+        label: label,
+        foreground: semantic.success,
+        background: semantic.success.withValues(alpha: 0.2),
+      );
+    case SentimentBucket.somewhatBullish:
+      return _SentimentTheme(
+        label: label,
+        foreground: semantic.success.withValues(alpha: 0.85),
+        background: semantic.success.withValues(alpha: 0.1),
+      );
+    case SentimentBucket.bearish:
+      return _SentimentTheme(
+        label: label,
+        foreground: semantic.danger,
+        background: semantic.danger.withValues(alpha: 0.2),
+      );
+    case SentimentBucket.somewhatBearish:
+      return _SentimentTheme(
+        label: label,
+        foreground: semantic.danger.withValues(alpha: 0.85),
+        background: semantic.danger.withValues(alpha: 0.1),
+      );
+    case SentimentBucket.neutral:
+      return _SentimentTheme(
+        label: label,
+        foreground: semantic.warning,
+        background: semantic.warning.withValues(alpha: 0.14),
+      );
   }
 }
 
@@ -227,7 +389,7 @@ class _NewsCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '${item.source.isEmpty ? 'Unknown source' : item.source} • '
+                        '${item.source.isEmpty ? 'Unknown source' : item.source} | '
                         '${_formatDateTime(item.timePublished)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -353,7 +515,9 @@ class _NewsErrorBanner extends StatelessWidget {
 }
 
 class _NewsEmptyState extends StatelessWidget {
-  const _NewsEmptyState();
+  const _NewsEmptyState({required this.filter});
+
+  final NewsSentimentFilter filter;
 
   @override
   Widget build(BuildContext context) {
@@ -369,7 +533,9 @@ class _NewsEmptyState extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Belum ada berita untuk filter ini.',
+                filter == NewsSentimentFilter.all
+                    ? 'Belum ada berita untuk filter ini.'
+                    : 'Belum ada berita untuk sentimen ${filter.label}.',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -406,50 +572,6 @@ class _NewsLoadingList extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SentimentTheme {
-  const _SentimentTheme({
-    required this.label,
-    required this.foreground,
-    required this.background,
-  });
-
-  final String label;
-  final Color foreground;
-  final Color background;
-}
-
-_SentimentTheme _sentimentTheme(BuildContext context, NewsItem item) {
-  final semantic = context.semanticColors;
-  final score = item.overallSentimentScore ?? 0;
-  final label = item.overallSentimentLabel.trim().isEmpty
-      ? (score > 0.15
-            ? 'BULLISH'
-            : score < -0.15
-            ? 'BEARISH'
-            : 'NEUTRAL')
-      : item.overallSentimentLabel.toUpperCase();
-
-  if (score > 0.15) {
-    return _SentimentTheme(
-      label: label,
-      foreground: semantic.success,
-      background: semantic.success.withValues(alpha: 0.14),
-    );
-  }
-  if (score < -0.15) {
-    return _SentimentTheme(
-      label: label,
-      foreground: semantic.danger,
-      background: semantic.danger.withValues(alpha: 0.14),
-    );
-  }
-  return _SentimentTheme(
-    label: label,
-    foreground: semantic.warning,
-    background: semantic.warning.withValues(alpha: 0.14),
-  );
 }
 
 String _formatDateTime(DateTime? dateTime) {
