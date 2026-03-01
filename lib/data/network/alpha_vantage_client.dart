@@ -260,12 +260,9 @@ class AlphaVantageClient {
     try {
       return await _queryViaProxy(params);
     } on AlphaVantageApiException catch (error) {
-      if (error.isRateLimit) {
-        rethrow;
-      }
       if (_canFallbackDirect) {
         _logger(
-          'Proxy request failed (${error.message}). Falling back to direct Alpha Vantage.',
+          'Proxy request failed (${error.message}). Falling back to direct Alpha Vantage using effective API key.',
         );
         return _queryDirect(params);
       }

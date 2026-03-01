@@ -30,6 +30,38 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Validate API configuration
+        run: |
+          PROXY_URL="${{ secrets.ALPHA_VANTAGE_PROXY_URL }}"
+          API_KEY="${{ secrets.ALPHA_VANTAGE_API_KEY }}"
+
+          if [ -z "$PROXY_URL" ] && [ -z "$API_KEY" ]; then
+            echo "ERROR: Both ALPHA_VANTAGE_PROXY_URL and ALPHA_VANTAGE_API_KEY are empty."
+            echo "Set at least one secret so the deployed APK can load market data."
+            exit 1
+          fi
+
+          if [ -n "$PROXY_URL" ]; then
+            echo "Proxy URL secret detected."
+          fi
+
+          if [ -n "$API_KEY" ]; then
+            echo "API key secret detected."
+          fi
+
+      - name: Extract app version
+        id: meta
+        run: |
+          APP_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          SAFE_VERSION=${APP_VERSION//+/-}
+          TAG_NAME="v${SAFE_VERSION}-build.${GITHUB_RUN_NUMBER}"
+          APK_NAME="Bullrithm-${SAFE_VERSION}.apk"
+
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "safe_version=${SAFE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Build release APK
         run: >
           flutter build apk --release
@@ -37,25 +69,26 @@ jobs:
           --dart-define=ALPHA_VANTAGE_PROXY_URL=${{ secrets.ALPHA_VANTAGE_PROXY_URL }}
 
       - name: Rename APK artifact
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Bullrithm.apk
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_name }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bullrithm-release-apk-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/Bullrithm.apk
+          name: bullrithm-release-apk-${{ steps.meta.outputs.safe_version }}-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_name }}
           if-no-files-found: error
 
-      - name: Publish latest build release
+      - name: Publish versioned release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest-build
-          name: Latest Release APK
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: Bullrithm v${{ steps.meta.outputs.app_version }}
           prerelease: false
-          overwrite_files: true
+          overwrite_files: false
           body: |
             Auto-generated RELEASE APK from commit ${{ github.sha }}.
+            Version: ${{ steps.meta.outputs.app_version }}
             Branch: ${{ github.ref_name }}
-          files: build/app/outputs/flutter-apk/Bullrithm.apk
+          files: build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
