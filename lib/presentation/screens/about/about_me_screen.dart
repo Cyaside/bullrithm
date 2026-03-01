@@ -233,7 +233,7 @@ class _AboutMeScreenState extends State<AboutMeScreen> {
   Widget build(BuildContext context) {
     final socialLinks = _profile.toSocialLinks();
     final imageProvider = _avatarBytes == null
-        ? const AssetImage('assets/profile/profile_photo.png') as ImageProvider
+        ? const AssetImage('assets/profile_photo.png') as ImageProvider
         : MemoryImage(_avatarBytes!);
 
     final content = ListView(
@@ -357,17 +357,13 @@ class AboutProfileData {
     return const AboutProfileData(
       fullName: 'Tristan Rasheed S',
       nickname: 'Tristan',
-      hobbies: <String>[
-        'Mobile Development',
-        'UI/UX Exploration',
-        'Reading Tech News',
-      ],
-      instagramValue: '@tristan',
-      instagramUrl: 'https://instagram.com/tristan',
-      githubValue: 'github.com/tristan',
-      githubUrl: 'https://github.com/tristan',
-      linkedInValue: 'linkedin.com/in/tristan',
-      linkedInUrl: 'https://linkedin.com/in/tristan',
+      hobbies: <String>['Sigma', 'BrainRot', 'Skibidi'],
+      instagramValue: '@tristanrash_s',
+      instagramUrl: 'https://instagram.com/tristanrash_s',
+      githubValue: 'Cyaside',
+      githubUrl: 'https://github.com/Cyaside',
+      linkedInValue: 'Tristan Rasheed Satria',
+      linkedInUrl: 'https://linkedin.com/in/tristan-rasheed-satria-8b7659323',
       avatarBase64: '',
     );
   }
@@ -394,7 +390,10 @@ class AboutProfileData {
         json['instagramUrl'],
         fallback: defaults.instagramUrl,
       ),
-      githubValue: _readString(json['githubValue'], fallback: defaults.githubValue),
+      githubValue: _readString(
+        json['githubValue'],
+        fallback: defaults.githubValue,
+      ),
       githubUrl: _readString(json['githubUrl'], fallback: defaults.githubUrl),
       linkedInValue: _readString(
         json['linkedInValue'],

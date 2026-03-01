@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../about/about_me_screen.dart';
+import '../home/home_page_screen.dart';
 import '../news/news_sentiment_screen.dart';
 import '../stock_list/stock_list_screen.dart';
 
@@ -15,13 +16,25 @@ class _MainShellScreenState extends State<MainShellScreen> {
   int _selectedIndex = 0;
   final Set<int> _loadedTabs = <int>{0};
 
+  void _navigateToTab(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _loadedTabs.add(index);
+    });
+  }
+
   Widget _buildScreen(int index) {
     switch (index) {
       case 0:
-        return const StockListScreen(showScaffold: false);
+        return HomePageScreen(
+          showScaffold: false,
+          onNavigateToTab: _navigateToTab,
+        );
       case 1:
-        return const NewsSentimentScreen(showScaffold: false);
+        return const StockListScreen(showScaffold: false);
       case 2:
+        return const NewsSentimentScreen(showScaffold: false);
+      case 3:
       default:
         return const AboutMeScreen(showScaffold: false);
     }
@@ -32,7 +45,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     return Scaffold(
       body: IndexedStack(
         index: _selectedIndex,
-        children: List<Widget>.generate(3, (index) {
+        children: List<Widget>.generate(4, (index) {
           if (!_loadedTabs.contains(index)) {
             return const SizedBox.shrink();
           }
@@ -41,17 +54,17 @@ class _MainShellScreenState extends State<MainShellScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-            _loadedTabs.add(index);
-          });
-        },
+        onDestinationSelected: _navigateToTab,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.candlestick_chart_outlined),
+            selectedIcon: Icon(Icons.candlestick_chart),
+            label: 'Stocks',
           ),
           NavigationDestination(
             icon: Icon(Icons.newspaper_outlined),

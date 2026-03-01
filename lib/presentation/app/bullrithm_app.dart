@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../common/theme/app_theme.dart';
 import '../../common/theme/theme_mode_controller.dart';
-import '../screens/shell/main_shell_screen.dart';
+import '../screens/intro/intro_flow_screen.dart';
 
 class BullrithmApp extends StatefulWidget {
   const BullrithmApp({super.key});
@@ -39,7 +39,7 @@ class _BullrithmAppState extends State<BullrithmApp> {
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),
             themeMode: _themeModeController.themeMode,
-            home: const MainShellScreen(),
+            home: const IntroFlowScreen(),
           ),
         );
       },

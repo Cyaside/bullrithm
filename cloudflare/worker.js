@@ -57,8 +57,36 @@ export default {
       return json({ error: "Missing ALPHA_VANTAGE_KEY secret" }, 500, corsHeaders);
     }
 
+    if (url.pathname === "/debug/key") {
+      const expectedToken = String(env.DEBUG_TOKEN || "").trim();
+      if (expectedToken) {
+        const providedToken = String(url.searchParams.get("token") || "").trim();
+        if (providedToken !== expectedToken) {
+          return json({ error: "Unauthorized" }, 401, corsHeaders);
+        }
+      }
+
+      const keyFingerprint = fingerprintKey(env.ALPHA_VANTAGE_KEY);
+      const cooldownActive = await isRateLimitCooldown(
+        caches.default,
+        buildRateLimitCacheKey(env.ALPHA_VANTAGE_KEY),
+      );
+
+      return json(
+        {
+          key_fingerprint: keyFingerprint,
+          rate_limit_cooldown_active: cooldownActive,
+          cache_namespace: CACHE_KEY_NAMESPACE,
+          force_upstream_supported: true,
+        },
+        200,
+        corsHeaders,
+      );
+    }
+
     if (url.pathname === "/quote") {
       const symbol = (url.searchParams.get("symbol") || "").trim().toUpperCase();
+      const forceUpstream = url.searchParams.get("force_upstream") === "1";
       if (!symbol) {
         return json({ error: "Missing symbol" }, 400, corsHeaders);
       }
@@ -66,11 +94,12 @@ export default {
         function: "GLOBAL_QUOTE",
         symbol,
       });
-      return proxyToAlphaVantage(params, env, corsHeaders, ctx);
+      return proxyToAlphaVantage(params, env, corsHeaders, ctx, { forceUpstream });
     }
 
     if (url.pathname === "/query") {
       const fn = (url.searchParams.get("function") || "").trim().toUpperCase();
+      const forceUpstream = url.searchParams.get("force_upstream") === "1";
       if (!fn) {
         return json({ error: "Missing function" }, 400, corsHeaders);
       }
@@ -87,16 +116,18 @@ export default {
       }
       params.set("function", fn);
 
-      return proxyToAlphaVantage(params, env, corsHeaders, ctx);
+      return proxyToAlphaVantage(params, env, corsHeaders, ctx, { forceUpstream });
     }
 
     return json({ error: "Not Found" }, 404, corsHeaders);
   },
 };
 
-async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
+async function proxyToAlphaVantage(params, env, corsHeaders, ctx, options = {}) {
+  const forceUpstream = options.forceUpstream === true;
   const fn = (params.get("function") || "").trim().toUpperCase();
   const softTtlSeconds = getSoftTtlForFunction(fn);
+  const rateLimitCacheKey = buildRateLimitCacheKey(env.ALPHA_VANTAGE_KEY);
 
   const upstream = new URL("https://www.alphavantage.co/query");
   for (const [k, v] of params.entries()) {
@@ -112,8 +143,8 @@ async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
     return respondFromCache(cached, corsHeaders, "HIT");
   }
 
-  const inRateLimitCooldown = await isRateLimitCooldown(cache);
-  if (inRateLimitCooldown) {
+  const inRateLimitCooldown = await isRateLimitCooldown(cache, rateLimitCacheKey);
+  if (inRateLimitCooldown && !forceUpstream) {
     if (cached) {
       return respondFromCache(cached, corsHeaders, "STALE", "rate_limit_cooldown");
     }
@@ -144,7 +175,7 @@ async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
 
   if (!upstreamResp.ok) {
     if (upstreamResp.status === 429) {
-      ctx.waitUntil(markRateLimitCooldown(cache));
+      ctx.waitUntil(markRateLimitCooldown(cache, rateLimitCacheKey));
     }
     if (cached) {
       return respondFromCache(cached, corsHeaders, "STALE", "upstream_non_200");
@@ -179,7 +210,7 @@ async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
 
   if (payload["Note"]) {
     const safeDetail = sanitizeRateLimitDetail(payload["Note"]);
-    ctx.waitUntil(markRateLimitCooldown(cache));
+    ctx.waitUntil(markRateLimitCooldown(cache, rateLimitCacheKey));
     if (cached) {
       return respondFromCache(cached, corsHeaders, "STALE", "upstream_rate_limited");
     }
@@ -193,7 +224,7 @@ async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
 
   if (typeof payload["Information"] === "string" && payload["Information"].trim().length > 0) {
     const safeDetail = sanitizeRateLimitDetail(payload["Information"]);
-    ctx.waitUntil(markRateLimitCooldown(cache));
+    ctx.waitUntil(markRateLimitCooldown(cache, rateLimitCacheKey));
     if (cached) {
       return respondFromCache(cached, corsHeaders, "STALE", "upstream_rate_limited");
     }
@@ -281,12 +312,12 @@ function sanitizeRateLimitDetail(rawDetail) {
   return detail.replace(/(API key(?:\s+as)?\s+)[A-Z0-9]+/gi, "$1[REDACTED]");
 }
 
-async function isRateLimitCooldown(cache) {
-  const marker = await cache.match(new Request(RATE_LIMIT_CACHE_KEY, { method: "GET" }));
+async function isRateLimitCooldown(cache, rateLimitCacheKey = RATE_LIMIT_CACHE_KEY) {
+  const marker = await cache.match(new Request(rateLimitCacheKey, { method: "GET" }));
   return !!marker;
 }
 
-async function markRateLimitCooldown(cache) {
+async function markRateLimitCooldown(cache, rateLimitCacheKey = RATE_LIMIT_CACHE_KEY) {
   const markerResponse = new Response("1", {
     status: 200,
     headers: {
@@ -294,7 +325,22 @@ async function markRateLimitCooldown(cache) {
       "Content-Type": "text/plain",
     },
   });
-  await cache.put(new Request(RATE_LIMIT_CACHE_KEY, { method: "GET" }), markerResponse);
+  await cache.put(new Request(rateLimitCacheKey, { method: "GET" }), markerResponse);
+}
+
+function buildRateLimitCacheKey(apiKey) {
+  const key = String(apiKey || "").trim();
+  if (!key) return RATE_LIMIT_CACHE_KEY;
+  const suffix = key.slice(-8).toUpperCase();
+  return `${RATE_LIMIT_CACHE_KEY}:${suffix}`;
+}
+
+function fingerprintKey(apiKey) {
+  const key = String(apiKey || "").trim();
+  if (!key) return "missing";
+  const head = key.slice(0, 3).toUpperCase();
+  const tail = key.slice(-4).toUpperCase();
+  return `${head}...${tail}`;
 }
 
 function buildCorsHeaders(env, origin) {
