@@ -316,7 +316,7 @@ class _AboutMeScreenState extends State<AboutMeScreen> {
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Key ini disimpan lokal di perangkat.',
+                  'Key ini disimpan lokal dan akan bypass proxy deployment.',
                   style: TextStyle(fontSize: 12),
                 ),
               ),

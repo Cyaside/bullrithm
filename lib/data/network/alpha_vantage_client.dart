@@ -56,7 +56,20 @@ class AlphaVantageClient {
     final client = httpClient ?? http.Client();
     final outputLogger = logger ?? _defaultLogger;
     _warmUpPersistentCache();
+    final runtimeApiKey = AppEnv.runtimeAlphaVantageApiKey;
     final effectiveApiKey = AppEnv.effectiveAlphaVantageApiKey;
+
+    // User-provided runtime key from app settings should override deployment
+    // proxy usage to avoid broken/misconfigured proxy in production builds.
+    if (runtimeApiKey != null && runtimeApiKey.isNotEmpty) {
+      return AlphaVantageClient._(
+        provider: MarketDataProvider.alphaDirect,
+        httpClient: client,
+        logger: outputLogger,
+        timeout: timeout,
+        alphaApiKey: runtimeApiKey,
+      );
+    }
 
     if (AppEnv.hasAlphaVantageProxyUrl) {
       return AlphaVantageClient._(
