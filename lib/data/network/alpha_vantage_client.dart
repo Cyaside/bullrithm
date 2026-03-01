@@ -146,7 +146,7 @@ class AlphaVantageClient {
 
   Future<List<NewsItem>> fetchNewsSentiment({
     String? ticker,
-    int limit = 20,
+    int limit = 1000,
   }) async {
     final normalizedTicker = ticker?.trim().toUpperCase();
 

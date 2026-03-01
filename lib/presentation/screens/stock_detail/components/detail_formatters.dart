@@ -38,3 +38,9 @@ String formatMarketCap(int? value) {
   if (v >= 1e3) return '${(v / 1e3).toStringAsFixed(2)} K';
   return value.toString();
 }
+
+String formatDividendYield(double? value) {
+  if (value == null) return 'Data tidak tersedia';
+  final percent = value * 100;
+  return '${percent.toStringAsFixed(2)}%';
+}

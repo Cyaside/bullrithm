@@ -52,7 +52,7 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
     });
 
     try {
-      final items = await _client!.fetchNewsSentiment(limit: 20);
+      final items = await _client!.fetchNewsSentiment(limit: 1000);
       if (!mounted || currentToken != _requestToken) return;
 
       setState(() {

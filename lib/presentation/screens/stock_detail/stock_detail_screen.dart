@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
@@ -24,7 +25,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   List<DailyPricePoint> _priceSeries = const [];
   bool _isLoading = true;
   String? _errorMessage;
-  DateTime? _lastUpdated;
   DateTime? _lastRefreshAt;
   int _requestToken = 0;
 
@@ -79,7 +79,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
       setState(() {
         _overview = responses[0] as CompanyOverview;
         _priceSeries = responses[1] as List<DailyPricePoint>;
-        _lastUpdated = DateTime.now();
       });
     } on AlphaVantageApiException catch (error) {
       if (!mounted || currentToken != _requestToken) return;
@@ -128,27 +127,33 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
         ? _priceSeries
         : _priceSeries.sublist(_priceSeries.length - _chartWindowDays);
 
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: Text(widget.symbol.toUpperCase())),
+      appBar: AppBar(
+        title: const Text(''),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+        scrolledUnderElevation: 0,
+      ),
       body: RefreshIndicator(
         onRefresh: () => _fetchData(fromPullToRefresh: true),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           children: [
             if (_isLoading && _overview == null) ...[
               const SizedBox(height: 120),
               const Center(child: CircularProgressIndicator()),
             ] else ...[
-              StockDetailHeaderCard(overview: _overview, symbol: widget.symbol),
-              const SizedBox(height: 12),
-              StockDetailPriceSummaryCard(
+              StockDetailHeaderCard(
+                overview: _overview,
+                symbol: widget.symbol,
                 price: lastClose,
                 currency: _overview?.currency,
                 changeValue: delta,
                 changePercent: deltaPct,
                 changeColor: moveColor,
-                lastUpdated: _lastUpdated,
               ),
               const SizedBox(height: 12),
               StockDetailChartCard(points: chartPoints),
@@ -157,6 +162,8 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
               const SizedBox(height: 12),
               StockDetailDescriptionCard(
                 description: _overview?.description ?? '',
+                websiteUrl: _overview?.officialSite,
+                onVisitWebsite: _openOfficialSite,
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
@@ -182,5 +189,21 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openOfficialSite() async {
+    final raw = _overview?.officialSite.trim() ?? '';
+    if (raw.isEmpty) return;
+
+    final hasScheme = raw.startsWith('http://') || raw.startsWith('https://');
+    final uri = Uri.tryParse(hasScheme ? raw : 'https://$raw');
+    if (uri == null) return;
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal membuka website perusahaan.')),
+      );
+    }
   }
 }

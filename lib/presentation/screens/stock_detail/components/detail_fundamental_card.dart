@@ -17,40 +17,36 @@ class StockDetailFundamentalCard extends StatelessWidget {
         'Market Cap',
         formatMarketCap(overview?.marketCapitalization),
       ),
-      _MetricItem('Sector', displayOrFallback(overview?.sector)),
-      _MetricItem('Industry', displayOrFallback(overview?.industry)),
       _MetricItem(
         'P/E Ratio',
         overview?.peRatio == null
             ? 'Data tidak tersedia'
             : formatDecimal(overview!.peRatio!),
       ),
-      _MetricItem('Currency', displayOrFallback(overview?.currency)),
-      _MetricItem('Country', displayOrFallback(overview?.country)),
+      _MetricItem('Div Yield', formatDividendYield(overview?.dividendYield)),
+      _MetricItem('Sector', displayOrFallback(overview?.sector)),
     ];
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Fundamental', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 12),
             GridView.builder(
               physics: const NeverScrollableScrollPhysics(),
               shrinkWrap: true,
               itemCount: items.length,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 2.2,
+                childAspectRatio: 2.45,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
               ),
               itemBuilder: (context, index) {
                 final item = items[index];
                 return Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     color: context.semanticColors.surfaceMuted,
@@ -60,13 +56,22 @@ class StockDetailFundamentalCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(item.label, style: theme.textTheme.bodySmall),
-                      const SizedBox(height: 4),
+                      Text(
+                        item.label,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
                       Text(
                         item.value,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
