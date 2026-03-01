@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'components/components.dart';
+import '../../widgets/market_top_header.dart';
 
 class AboutMeScreen extends StatelessWidget {
   const AboutMeScreen({super.key, this.showScaffold = true});
@@ -41,7 +42,10 @@ class AboutMeScreen extends StatelessWidget {
     final content = ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        _TopHeader(title: 'My Profile', subtitle: 'Personal details'),
+        const MarketTopHeader(
+          title: 'My Profile',
+          subtitle: 'Personal details',
+        ),
         const SizedBox(height: 12),
         const AboutProfileCard(
           imageAssetPath: 'assets/profile/profile_photo.png',
@@ -83,44 +87,5 @@ class AboutMeScreen extends StatelessWidget {
         context,
       ).showSnackBar(const SnackBar(content: Text('Gagal membuka link.')));
     }
-  }
-}
-
-class _TopHeader extends StatelessWidget {
-  const _TopHeader({required this.title, required this.subtitle});
-
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: theme.colorScheme.onPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

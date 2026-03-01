@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
+import '../../widgets/market_top_header.dart';
 
 class NewsSentimentScreen extends StatefulWidget {
   const NewsSentimentScreen({super.key, this.showScaffold = true});
@@ -99,47 +100,29 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     final content = RefreshIndicator(
       onRefresh: _fetchNews,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         children: [
-          _TopHeader(
+          const MarketTopHeader(
             title: 'Latest News',
             subtitle: 'Market insights & updates',
           ),
           const SizedBox(height: 12),
-          Text('Berita Market', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              FilledButton.icon(
-                onPressed: _fetchNews,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Apply Filter'),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _lastUpdated == null
-                      ? 'Last updated: -'
-                      : 'Last updated: ${_formatDateTime(_lastUpdated!)}',
-                  style: theme.textTheme.bodySmall,
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
+          _NewsToolbar(
+            lastUpdated: _lastUpdated,
+            isLoading: _isLoading,
+            onRefresh: _fetchNews,
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),
             _NewsErrorBanner(message: _errorMessage!, onRetry: _fetchNews),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           if (_isLoading && _items.isEmpty) ...[
-            const Center(child: CircularProgressIndicator()),
+            const _NewsLoadingList(),
           ] else if (_items.isEmpty) ...[
             const _NewsEmptyState(),
           ] else ...[
@@ -163,41 +146,39 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
   }
 }
 
-class _TopHeader extends StatelessWidget {
-  const _TopHeader({required this.title, required this.subtitle});
+class _NewsToolbar extends StatelessWidget {
+  const _NewsToolbar({
+    required this.lastUpdated,
+    required this.isLoading,
+    required this.onRefresh,
+  });
 
-  final String title;
-  final String subtitle;
+  final DateTime? lastUpdated;
+  final bool isLoading;
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: theme.colorScheme.onPrimary,
-              fontWeight: FontWeight.w700,
-            ),
+    return Row(
+      children: [
+        FilledButton.tonalIcon(
+          onPressed: isLoading ? null : () => onRefresh(),
+          icon: const Icon(Icons.tune_rounded, size: 16),
+          label: const Text('Apply Filter'),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            lastUpdated == null
+                ? 'Last updated: -'
+                : 'Last updated: ${_formatDateTime(lastUpdated!)}',
+            style: theme.textTheme.bodySmall,
+            textAlign: TextAlign.right,
           ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -217,55 +198,121 @@ class _NewsCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Card(
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: sentiment.background,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        sentiment.label,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: sentiment.foreground,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${item.source.isEmpty ? 'Unknown source' : item.source} • '
+                        '${_formatDateTime(item.timePublished)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Text(
                   item.title.isEmpty ? 'Tanpa Judul' : item.title,
-                  style: theme.textTheme.titleLarge,
+                  style: theme.textTheme.titleLarge?.copyWith(fontSize: 16),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '${item.source.isEmpty ? 'Unknown source' : item.source} | '
-                  '${_formatDateTime(item.timePublished)}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: sentiment.background,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    sentiment.label,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: sentiment.foreground,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 Text(
                   item.summary.isEmpty
                       ? 'Ringkasan tidak tersedia.'
                       : item.summary,
-                  style: theme.textTheme.bodyMedium,
-                  maxLines: 4,
+                  style: theme.textTheme.bodySmall?.copyWith(height: 1.35),
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 10),
+                _NewsPreviewImage(imageUrl: item.bannerImageUrl),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NewsPreviewImage extends StatelessWidget {
+  const _NewsPreviewImage({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasImage = imageUrl.trim().isNotEmpty;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 115,
+        width: double.infinity,
+        child: hasImage
+            ? Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _NewsPreviewFallback(theme: theme),
+              )
+            : _NewsPreviewFallback(theme: theme),
+      ),
+    );
+  }
+}
+
+class _NewsPreviewFallback extends StatelessWidget {
+  const _NewsPreviewFallback({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            theme.colorScheme.primary.withValues(alpha: 0.16),
+            theme.colorScheme.primary.withValues(alpha: 0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.newspaper_rounded,
+          size: 32,
+          color: theme.colorScheme.primary.withValues(alpha: 0.7),
         ),
       ),
     );
@@ -295,7 +342,10 @@ class _NewsErrorBanner extends StatelessWidget {
         children: [
           Text(message, style: theme.textTheme.bodyMedium),
           const SizedBox(height: 8),
-          FilledButton(onPressed: () => onRetry(), child: const Text('Retry')),
+          FilledButton.tonal(
+            onPressed: () => onRetry(),
+            child: const Text('Retry'),
+          ),
         ],
       ),
     );
@@ -315,7 +365,7 @@ class _NewsEmptyState extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(Icons.newspaper, color: semantic.warning),
+            Icon(Icons.newspaper_rounded, color: semantic.warning),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -324,6 +374,34 @@ class _NewsEmptyState extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NewsLoadingList extends StatelessWidget {
+  const _NewsLoadingList();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        4,
+        (_) => const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: SizedBox(
+            height: 188,
+            child: Card(
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -347,28 +425,28 @@ _SentimentTheme _sentimentTheme(BuildContext context, NewsItem item) {
   final score = item.overallSentimentScore ?? 0;
   final label = item.overallSentimentLabel.trim().isEmpty
       ? (score > 0.15
-            ? 'Bullish'
+            ? 'BULLISH'
             : score < -0.15
-            ? 'Bearish'
-            : 'Neutral')
-      : item.overallSentimentLabel;
+            ? 'BEARISH'
+            : 'NEUTRAL')
+      : item.overallSentimentLabel.toUpperCase();
 
   if (score > 0.15) {
     return _SentimentTheme(
-      label: '$label (${score.toStringAsFixed(2)})',
+      label: label,
       foreground: semantic.success,
       background: semantic.success.withValues(alpha: 0.14),
     );
   }
   if (score < -0.15) {
     return _SentimentTheme(
-      label: '$label (${score.toStringAsFixed(2)})',
+      label: label,
       foreground: semantic.danger,
       background: semantic.danger.withValues(alpha: 0.14),
     );
   }
   return _SentimentTheme(
-    label: '$label (${score.toStringAsFixed(2)})',
+    label: label,
     foreground: semantic.warning,
     background: semantic.warning.withValues(alpha: 0.14),
   );

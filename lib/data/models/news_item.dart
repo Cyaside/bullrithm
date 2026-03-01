@@ -3,6 +3,7 @@ class NewsItem {
     required this.title,
     required this.source,
     required this.url,
+    required this.bannerImageUrl,
     required this.summary,
     required this.timePublished,
     required this.overallSentimentScore,
@@ -12,6 +13,7 @@ class NewsItem {
   final String title;
   final String source;
   final String url;
+  final String bannerImageUrl;
   final String summary;
   final DateTime? timePublished;
   final double? overallSentimentScore;
@@ -22,6 +24,7 @@ class NewsItem {
       title: (json['title'] as String?)?.trim() ?? '',
       source: (json['source'] as String?)?.trim() ?? '',
       url: (json['url'] as String?)?.trim() ?? '',
+      bannerImageUrl: (json['banner_image'] as String?)?.trim() ?? '',
       summary: (json['summary'] as String?)?.trim() ?? '',
       timePublished: _parsePublishedAt(json['time_published'] as String?),
       overallSentimentScore: _parseDouble(json['overall_sentiment_score']),

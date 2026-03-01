@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
+import '../../widgets/market_top_header.dart';
 import '../stock_detail/stock_detail_screen.dart';
 
 enum MarketMoverTab { gainers, losers, active }
@@ -207,72 +208,62 @@ class _StockListScreenState extends State<StockListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final query = _searchController.text.trim();
 
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        _TopHeader(
+        const MarketTopHeader(
           title: 'Market Overview',
           subtitle: "Today's top performers",
         ),
         const SizedBox(height: 12),
-        TextField(
+        _SearchField(
           controller: _searchController,
+          query: query,
           onChanged: _onQueryChanged,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search),
-            hintText: 'Cari ticker (AAPL, TSLA, MSFT...)',
-            suffixIcon: query.isEmpty
-                ? null
-                : IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-                      _onQueryChanged('');
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.close),
-                    tooltip: 'Clear',
-                  ),
-          ),
+          onClear: () {
+            _searchController.clear();
+            _onQueryChanged('');
+            setState(() {});
+          },
         ),
-        if (_errorMessage != null) ...[
+        const SizedBox(height: 12),
+        SegmentedButton<MarketMoverTab>(
+          segments: const [
+            ButtonSegment<MarketMoverTab>(
+              value: MarketMoverTab.gainers,
+              label: Text('Gainers'),
+            ),
+            ButtonSegment<MarketMoverTab>(
+              value: MarketMoverTab.losers,
+              label: Text('Losers'),
+            ),
+            ButtonSegment<MarketMoverTab>(
+              value: MarketMoverTab.active,
+              label: Text('Active'),
+            ),
+          ],
+          showSelectedIcon: false,
+          selected: <MarketMoverTab>{_selectedMoverTab},
+          onSelectionChanged: (value) {
+            setState(() {
+              _selectedMoverTab = value.first;
+            });
+          },
+        ),
+        if (query.isEmpty && _moversErrorMessage != null) ...[
+          const SizedBox(height: 12),
+          _ErrorBanner(message: _moversErrorMessage!),
+        ],
+        if (query.isNotEmpty && _errorMessage != null) ...[
           const SizedBox(height: 12),
           _ErrorBanner(message: _errorMessage!),
         ],
         const SizedBox(height: 12),
         if (query.isEmpty) ...[
-          SegmentedButton<MarketMoverTab>(
-            segments: const [
-              ButtonSegment<MarketMoverTab>(
-                value: MarketMoverTab.gainers,
-                label: Text('Gainers'),
-              ),
-              ButtonSegment<MarketMoverTab>(
-                value: MarketMoverTab.losers,
-                label: Text('Losers'),
-              ),
-              ButtonSegment<MarketMoverTab>(
-                value: MarketMoverTab.active,
-                label: Text('Active'),
-              ),
-            ],
-            selected: <MarketMoverTab>{_selectedMoverTab},
-            onSelectionChanged: (value) {
-              setState(() {
-                _selectedMoverTab = value.first;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          if (_moversErrorMessage != null) ...[
-            _ErrorBanner(message: _moversErrorMessage!),
-            const SizedBox(height: 12),
-          ],
           if (_isMoversLoading)
-            const _LoadingList()
+            const _LoadingList(itemHeight: 65, items: 7)
           else if (_selectedMovers.isNotEmpty)
             _MarketMoverList(items: _selectedMovers)
           else
@@ -288,20 +279,13 @@ class _StockListScreenState extends State<StockListScreen> {
               },
             ),
         ] else ...[
-          if (_isLoading) ...[
-            const _LoadingList(),
-          ] else if (_results.isEmpty) ...[
+          if (_isLoading)
+            const _LoadingList(itemHeight: 65, items: 4)
+          else if (_results.isNotEmpty)
+            _ResultList(results: _results)
+          else
             const _EmptyState(),
-          ] else ...[
-            _ResultList(results: _results),
-          ],
         ],
-        const SizedBox(height: 8),
-        Text(
-          'Tap item untuk buka detail.',
-          style: theme.textTheme.bodySmall,
-          textAlign: TextAlign.center,
-        ),
       ],
     );
 
@@ -316,40 +300,35 @@ class _StockListScreenState extends State<StockListScreen> {
   }
 }
 
-class _TopHeader extends StatelessWidget {
-  const _TopHeader({required this.title, required this.subtitle});
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.controller,
+    required this.query,
+    required this.onChanged,
+    required this.onClear,
+  });
 
-  final String title;
-  final String subtitle;
+  final TextEditingController controller;
+  final String query;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: theme.colorScheme.onPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-        ],
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search_rounded),
+        hintText: 'Cari ticker (AAPL, TSLA, MSFT...)',
+        suffixIcon: query.isEmpty
+            ? null
+            : IconButton(
+                onPressed: onClear,
+                icon: const Icon(Icons.close_rounded),
+                tooltip: 'Clear',
+              ),
       ),
     );
   }
@@ -362,16 +341,33 @@ class _MarketMoverList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: items
-          .map((item) => _MarketMoverCard(item: item))
-          .toList(growable: false),
+    final dividerColor = context.semanticColors.border;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: items
+            .asMap()
+            .entries
+            .map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              return Column(
+                children: [
+                  _MarketMoverRow(item: item),
+                  if (index != items.length - 1)
+                    Divider(height: 1, color: dividerColor),
+                ],
+              );
+            })
+            .toList(growable: false),
+      ),
     );
   }
 }
 
-class _MarketMoverCard extends StatelessWidget {
-  const _MarketMoverCard({required this.item});
+class _MarketMoverRow extends StatelessWidget {
+  const _MarketMoverRow({required this.item});
 
   final MarketMoverItem item;
 
@@ -380,49 +376,67 @@ class _MarketMoverCard extends StatelessWidget {
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
     final isUp = item.changePercent >= 0;
-    final color = isUp ? semantic.success : semantic.danger;
-    final prefix = isUp ? '+' : '';
+    final moveColor = isUp ? semantic.success : semantic.danger;
+    final deltaPrefix = isUp ? '+' : '';
+    final icon = isUp ? Icons.north_east_rounded : Icons.south_east_rounded;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 4,
-          ),
-          title: Text(item.symbol, style: theme.textTheme.titleLarge),
-          subtitle: Text(
-            'Vol: ${item.volume}',
-            style: theme.textTheme.bodySmall,
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '\$${item.price.toStringAsFixed(2)}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '$prefix${item.changePercent.toStringAsFixed(2)}%',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
+    return InkWell(
+      onTap: item.symbol.trim().isEmpty
+          ? null
+          : () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => StockDetailScreen(symbol: item.symbol),
                 ),
-              ),
-            ],
-          ),
-          onTap: item.symbol.trim().isEmpty
-              ? null
-              : () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => StockDetailScreen(symbol: item.symbol),
+              );
+            },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.symbol.toUpperCase(),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 2),
+                  Text('Vol ${item.volume}', style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '\$${item.price.toStringAsFixed(2)}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 13, color: moveColor),
+                    const SizedBox(width: 2),
+                    Text(
+                      '$deltaPrefix${item.changePercent.toStringAsFixed(2)}%',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: moveColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -436,16 +450,33 @@ class _ResultList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: results
-          .map((item) => _ResultCard(item: item))
-          .toList(growable: false),
+    final dividerColor = context.semanticColors.border;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: results
+            .asMap()
+            .entries
+            .map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              return Column(
+                children: [
+                  _ResultRow(item: item),
+                  if (index != results.length - 1)
+                    Divider(height: 1, color: dividerColor),
+                ],
+              );
+            })
+            .toList(growable: false),
+      ),
     );
   }
 }
 
-class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.item});
+class _ResultRow extends StatelessWidget {
+  const _ResultRow({required this.item});
 
   final SearchResultItem item;
 
@@ -458,32 +489,43 @@ class _ResultCard extends StatelessWidget {
       if (item.currency.isNotEmpty) item.currency,
     ];
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 4,
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => StockDetailScreen(symbol: item.symbol),
           ),
-          title: Text(
-            item.symbol.isEmpty ? '-' : item.symbol,
-            style: theme.textTheme.titleLarge,
-          ),
-          subtitle: Text(
-            subtitleParts.isEmpty
-                ? 'Data tidak tersedia'
-                : subtitleParts.join(' | '),
-            style: theme.textTheme.bodySmall,
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => StockDetailScreen(symbol: item.symbol),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.symbol.isEmpty ? '-' : item.symbol,
+                    style: theme.textTheme.titleLarge?.copyWith(fontSize: 16),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitleParts.isEmpty
+                        ? 'Data tidak tersedia'
+                        : subtitleParts.join(' | '),
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-            );
-          },
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.textTheme.bodySmall?.color,
+            ),
+          ],
         ),
       ),
     );
@@ -491,22 +533,28 @@ class _ResultCard extends StatelessWidget {
 }
 
 class _LoadingList extends StatelessWidget {
-  const _LoadingList();
+  const _LoadingList({required this.itemHeight, required this.items});
+
+  final double itemHeight;
+  final int items;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(
-        4,
-        (index) => const Padding(
-          padding: EdgeInsets.only(bottom: 8),
-          child: SizedBox(
-            height: 76,
-            child: Card(
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: List.generate(items, (index) {
+          return SizedBox(
+            height: itemHeight,
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
-          ),
-        ),
+          );
+        }),
       ),
     );
   }
@@ -522,12 +570,11 @@ class _EmptyState extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.search_off, color: semantic.warning),
-            const SizedBox(width: 12),
+            Icon(Icons.search_off_rounded, color: semantic.warning),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Ticker tidak ditemukan. Coba kata kunci lain.',
@@ -555,13 +602,12 @@ class _ErrorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: semantic.danger.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: semantic.danger.withValues(alpha: 0.4)),
+        border: Border.all(color: semantic.danger.withValues(alpha: 0.36)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline, size: 18, color: semantic.danger),
+          Icon(Icons.error_outline_rounded, size: 18, color: semantic.danger),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
