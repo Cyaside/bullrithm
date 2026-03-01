@@ -154,9 +154,9 @@ class StockListController extends ChangeNotifier {
     } on AlphaVantageApiException catch (error) {
       if (_disposed) return;
       _moversErrorMessage = error.message;
-    } catch (_) {
+    } catch (error) {
       if (_disposed) return;
-      _moversErrorMessage = 'Gagal memuat market movers.';
+      _moversErrorMessage = 'Gagal memuat market movers: $error';
     } finally {
       if (!_disposed) {
         _isMoversLoading = false;

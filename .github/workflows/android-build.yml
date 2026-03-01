@@ -55,12 +55,14 @@ jobs:
           APP_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           SAFE_VERSION=${APP_VERSION//+/-}
           TAG_NAME="v${SAFE_VERSION}-build.${GITHUB_RUN_NUMBER}"
-          APK_NAME="Bullrithm-${SAFE_VERSION}.apk"
+          APK_RELEASE_NAME="Bullrithm-${SAFE_VERSION}-release.apk"
+          APK_DEBUG_NAME="Bullrithm-${SAFE_VERSION}-debug.apk"
 
           echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
           echo "safe_version=${SAFE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
-          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_release_name=${APK_RELEASE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_debug_name=${APK_DEBUG_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK
         run: >
@@ -68,14 +70,24 @@ jobs:
           --dart-define=ALPHA_VANTAGE_API_KEY=${{ secrets.ALPHA_VANTAGE_API_KEY }}
           --dart-define=ALPHA_VANTAGE_PROXY_URL=${{ secrets.ALPHA_VANTAGE_PROXY_URL }}
 
-      - name: Rename APK artifact
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_name }}
+      - name: Build debug APK
+        run: >
+          flutter build apk --debug
+          --dart-define=ALPHA_VANTAGE_API_KEY=${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          --dart-define=ALPHA_VANTAGE_PROXY_URL=${{ secrets.ALPHA_VANTAGE_PROXY_URL }}
+
+      - name: Rename APK artifacts
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_release_name }}
+          cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_debug_name }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: bullrithm-release-apk-${{ steps.meta.outputs.safe_version }}-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_name }}
+          path: |
+            build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_release_name }}
+            build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_debug_name }}
           if-no-files-found: error
 
       - name: Publish versioned release
@@ -86,9 +98,11 @@ jobs:
           prerelease: false
           overwrite_files: false
           body: |
-            Auto-generated RELEASE APK from commit ${{ github.sha }}.
+            Auto-generated APKs from commit ${{ github.sha }}.
             Version: ${{ steps.meta.outputs.app_version }}
             Branch: ${{ github.ref_name }}
-          files: build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_name }}
+          files: |
+            build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_release_name }}
+            build/app/outputs/flutter-apk/${{ steps.meta.outputs.apk_debug_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

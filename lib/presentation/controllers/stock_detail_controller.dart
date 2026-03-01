@@ -78,11 +78,11 @@ class StockDetailController extends ChangeNotifier {
         return StockDetailRefreshResult.completed;
       }
       _errorMessage = error.message;
-    } catch (_) {
+    } catch (error) {
       if (_disposed || currentToken != _requestToken) {
         return StockDetailRefreshResult.completed;
       }
-      _errorMessage = 'Gagal memuat detail saham.';
+      _errorMessage = 'Gagal memuat detail saham: $error';
     } finally {
       if (!_disposed && currentToken == _requestToken) {
         _isLoading = false;

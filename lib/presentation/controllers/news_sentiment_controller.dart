@@ -87,9 +87,9 @@ class NewsSentimentController extends ChangeNotifier {
     } on AlphaVantageApiException catch (error) {
       if (_disposed || currentToken != _requestToken) return;
       _errorMessage = error.message;
-    } catch (_) {
+    } catch (error) {
       if (_disposed || currentToken != _requestToken) return;
-      _errorMessage = 'Gagal memuat berita dan sentimen.';
+      _errorMessage = 'Gagal memuat berita dan sentimen: $error';
     } finally {
       if (!_disposed && currentToken == _requestToken) {
         _isLoading = false;

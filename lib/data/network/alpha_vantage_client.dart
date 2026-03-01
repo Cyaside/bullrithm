@@ -259,14 +259,18 @@ class AlphaVantageClient {
   ) async {
     try {
       return await _queryViaProxy(params);
-    } on AlphaVantageApiException catch (error) {
+    } catch (error) {
       if (_canFallbackDirect) {
         _logger(
-          'Proxy request failed (${error.message}). Falling back to direct Alpha Vantage using effective API key.',
+          'Proxy request failed ($error). Falling back to direct Alpha Vantage using effective API key.',
         );
         return _queryDirect(params);
       }
-      rethrow;
+
+      if (error is AlphaVantageApiException) {
+        rethrow;
+      }
+      throw AlphaVantageApiException('Proxy request failed: $error');
     }
   }
 
@@ -389,8 +393,12 @@ class AlphaVantageClient {
     if (base.isEmpty) {
       throw const AlphaVantageApiException('Proxy base URL not configured.');
     }
-    final uri = Uri.parse(base).replace(queryParameters: params);
-    return _getJson(uri);
+    try {
+      final uri = Uri.parse(base).replace(queryParameters: params);
+      return _getJson(uri);
+    } on FormatException {
+      throw AlphaVantageApiException('Invalid proxy URL: $base');
+    }
   }
 
   Future<Map<String, dynamic>> _queryDirect(Map<String, String> params) {
