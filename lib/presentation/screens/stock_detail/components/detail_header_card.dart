@@ -30,80 +30,80 @@ class StockDetailHeaderCard extends StatelessWidget {
     final priceLabel = price > 0
         ? '\$${formatDecimal(price)}'
         : 'Data tidak tersedia';
-    final deltaPrefix = changeValue >= 0 ? '+' : '';
-    final changeLabel =
-        '$deltaPrefix${formatDecimal(changePercent)}%';
+    final isUp = changeValue >= 0;
+    final deltaPrefix = isUp ? '+' : '';
+    final changeLabel = '$deltaPrefix${formatDecimal(changePercent)}%';
+    final directionIcon = isUp
+        ? Icons.north_east_rounded
+        : Icons.south_east_rounded;
 
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.primary,
-        borderRadius: const BorderRadius.vertical(
-          bottom: Radius.circular(24),
-          top: Radius.circular(18),
-        ),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        symbol.toUpperCase(),
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          color: theme.colorScheme.onPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        displayName,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onPrimary.withValues(
-                            alpha: 0.86,
-                          ),
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    symbol.toUpperCase(),
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: theme.colorScheme.onPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      priceLabel,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        color: theme.colorScheme.onPrimary,
-                        fontWeight: FontWeight.w700,
+                  const SizedBox(height: 4),
+                  Text(
+                    displayName,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onPrimary.withValues(
+                        alpha: 0.86,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  priceLabel,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(directionIcon, size: 14, color: changeColor),
+                    const SizedBox(width: 3),
                     Text(
-                      '↗ $changeLabel',
+                      changeLabel,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: changeColor,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      compactCurrencyCode(currency),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onPrimary.withValues(
-                          alpha: 0.78,
-                        ),
-                      ),
-                    ),
                   ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  compactCurrencyCode(currency),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onPrimary.withValues(alpha: 0.78),
+                  ),
                 ),
               ],
             ),

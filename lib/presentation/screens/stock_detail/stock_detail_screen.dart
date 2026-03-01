@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../common/theme/app_theme.dart';
+import '../../../common/theme/theme_mode_controller.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
 import '../news/news_sentiment_screen.dart';
@@ -112,6 +113,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final semantic = context.semanticColors;
+    final themeController = ThemeModeScope.of(context);
     final latestPoint = _priceSeries.isNotEmpty ? _priceSeries.last : null;
     final previousPoint = _priceSeries.length > 1
         ? _priceSeries[_priceSeries.length - 2]
@@ -135,6 +137,21 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
         scrolledUnderElevation: 0,
+        actions: [
+          IconButton(
+            onPressed: themeController.toggle,
+            tooltip: themeController.isDarkMode
+                ? 'Switch to light mode'
+                : 'Switch to dark mode',
+            icon: Icon(
+              themeController.isDarkMode
+                  ? Icons.light_mode_rounded
+                  : Icons.dark_mode_rounded,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () => _fetchData(fromPullToRefresh: true),

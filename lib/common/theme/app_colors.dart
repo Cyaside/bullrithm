@@ -4,23 +4,23 @@ import 'package:flutter/material.dart';
 class AppPalette {
   const AppPalette._();
 
-  static const lightBackground = Color(0xFFF7F8FA);
+  static const lightBackground = Color(0xFFF2F3F8);
   static const lightCard = Color(0xFFFFFFFF);
-  static const lightSurfaceMuted = Color(0xFFEEF1F4);
-  static const lightPrimary = Color(0xFF4F46E5);
-  static const lightPrimaryHover = Color(0xFF4338CA);
-  static const lightTextPrimary = Color(0xFF111827);
-  static const lightTextSecondary = Color(0xFF6B7280);
-  static const lightBorder = Color(0xFFE5E7EB);
+  static const lightSurfaceMuted = Color(0xFFF5F6FA);
+  static const lightPrimary = Color(0xFF4C37C7);
+  static const lightPrimaryHover = Color(0xFF5E4BDC);
+  static const lightTextPrimary = Color(0xFF1C2230);
+  static const lightTextSecondary = Color(0xFF8A90A1);
+  static const lightBorder = Color(0xFFE8EAF1);
 
-  static const darkBackground = Color(0xFF0B1220);
-  static const darkCard = Color(0xFF111827);
-  static const darkSurfaceMuted = Color(0xFF1F2937);
-  static const darkPrimary = Color(0xFF818CF8);
-  static const darkPrimaryHover = Color(0xFFA5B4FC);
-  static const darkTextPrimary = Color(0xFFF9FAFB);
-  static const darkTextSecondary = Color(0xFF9CA3AF);
-  static const darkBorder = Color(0xFF374151);
+  static const darkBackground = Color(0xFF0D0F1B);
+  static const darkCard = Color(0xFF161A2A);
+  static const darkSurfaceMuted = Color(0xFF1F2438);
+  static const darkPrimary = Color(0xFF7561F2);
+  static const darkPrimaryHover = Color(0xFF8A7AFF);
+  static const darkTextPrimary = Color(0xFFF4F5FA);
+  static const darkTextSecondary = Color(0xFFA3A9BB);
+  static const darkBorder = Color(0xFF2B324B);
 
   static const successLight = Color(0xFF15803D);
   static const dangerLight = Color(0xFFB91C1C);

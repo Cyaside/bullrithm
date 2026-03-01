@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
@@ -82,34 +83,34 @@ class AppTheme {
       scaffoldBackgroundColor: scaffoldBackgroundColor,
       cardColor: cardColor,
       dividerColor: dividerColor,
-      fontFamily: 'Roboto',
       extensions: <ThemeExtension<dynamic>>[semanticColors],
     );
 
-    final textTheme = base.textTheme.copyWith(
-      headlineSmall: base.textTheme.headlineSmall?.copyWith(
+    final baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(base.textTheme);
+    final textTheme = baseTextTheme.copyWith(
+      headlineSmall: baseTextTheme.headlineSmall?.copyWith(
         fontSize: 24,
         fontWeight: FontWeight.w700,
         color: textPrimary,
       ),
-      titleLarge: base.textTheme.titleLarge?.copyWith(
+      titleLarge: baseTextTheme.titleLarge?.copyWith(
         fontSize: 18,
         fontWeight: FontWeight.w600,
         color: textPrimary,
       ),
-      bodyLarge: base.textTheme.bodyLarge?.copyWith(
+      bodyLarge: baseTextTheme.bodyLarge?.copyWith(
         fontSize: 16,
         color: textPrimary,
       ),
-      bodyMedium: base.textTheme.bodyMedium?.copyWith(
+      bodyMedium: baseTextTheme.bodyMedium?.copyWith(
         fontSize: 14,
         color: textPrimary,
       ),
-      bodySmall: base.textTheme.bodySmall?.copyWith(
+      bodySmall: baseTextTheme.bodySmall?.copyWith(
         fontSize: 12,
         color: textSecondary,
       ),
-      labelMedium: base.textTheme.labelMedium?.copyWith(
+      labelMedium: baseTextTheme.labelMedium?.copyWith(
         fontSize: 13,
         fontWeight: FontWeight.w500,
         color: textSecondary,
@@ -132,7 +133,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           side: BorderSide(color: dividerColor),
         ),
       ),
@@ -157,16 +158,63 @@ class AppTheme {
           borderSide: BorderSide(color: colorScheme.primary, width: 1.2),
         ),
       ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return colorScheme.primary.withValues(alpha: 0.14);
+            }
+            return semanticColors.surfaceMuted;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return colorScheme.primary;
+            }
+            return textSecondary;
+          }),
+          textStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return textTheme.labelMedium?.copyWith(
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+            );
+          }),
+          side: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return BorderSide(
+                color: colorScheme.primary.withValues(alpha: 0.2),
+              );
+            }
+            return BorderSide(color: semanticColors.border);
+          }),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: cardColor,
-        indicatorColor: colorScheme.primary.withValues(alpha: 0.14),
-        labelTextStyle: WidgetStatePropertyAll<TextStyle?>(textTheme.bodySmall),
+        elevation: 0,
+        indicatorColor: Colors.transparent,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return textTheme.bodySmall?.copyWith(
+            color: selected ? colorScheme.primary : textSecondary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          );
+        }),
         iconTheme: WidgetStateProperty.resolveWith<IconThemeData?>((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
             color: selected ? colorScheme.primary : textSecondary,
           );
         }),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: cardColor,
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: textPrimary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
