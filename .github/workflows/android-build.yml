@@ -30,29 +30,32 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build debug APK
+      - name: Build release APK
         run: >
-          flutter build apk --debug
+          flutter build apk --release
           --dart-define=ALPHA_VANTAGE_API_KEY=${{ secrets.ALPHA_VANTAGE_API_KEY }}
           --dart-define=ALPHA_VANTAGE_PROXY_URL=${{ secrets.ALPHA_VANTAGE_PROXY_URL }}
+
+      - name: Rename APK artifact
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Bullrithm.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bullrithm-apk-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: bullrithm-release-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/Bullrithm.apk
           if-no-files-found: error
 
       - name: Publish latest build release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
-          name: Latest Build
-          prerelease: true
+          name: Latest Release APK
+          prerelease: false
           overwrite_files: true
           body: |
-            Auto-generated APK from commit ${{ github.sha }}.
+            Auto-generated RELEASE APK from commit ${{ github.sha }}.
             Branch: ${{ github.ref_name }}
-          files: build/app/outputs/flutter-apk/app-debug.apk
+          files: build/app/outputs/flutter-apk/Bullrithm.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
