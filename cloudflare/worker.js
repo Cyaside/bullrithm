@@ -18,6 +18,9 @@
 
 const CACHE_HARD_TTL_SECONDS = 60 * 60 * 24; // 24h retention in Cloudflare cache
 const DEFAULT_SOFT_TTL_SECONDS = 60; // fresh window fallback
+const CACHE_KEY_NAMESPACE = "v2";
+const RATE_LIMIT_COOLDOWN_SECONDS = 60 * 5; // 5m
+const RATE_LIMIT_CACHE_KEY = `https://cache-key.local/${CACHE_KEY_NAMESPACE}/meta/rate_limit`;
 const FUNCTION_SOFT_TTL_SECONDS = Object.freeze({
   SYMBOL_SEARCH: 60 * 60 * 6, // 6h
   OVERVIEW: 60 * 60 * 24, // 24h
@@ -109,6 +112,22 @@ async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
     return respondFromCache(cached, corsHeaders, "HIT");
   }
 
+  const inRateLimitCooldown = await isRateLimitCooldown(cache);
+  if (inRateLimitCooldown) {
+    if (cached) {
+      return respondFromCache(cached, corsHeaders, "STALE", "rate_limit_cooldown");
+    }
+    return json(
+      {
+        error: "Upstream rate limit",
+        detail: "Rate limit cooldown active. Please retry later.",
+      },
+      429,
+      corsHeaders,
+      { "Retry-After": String(RATE_LIMIT_COOLDOWN_SECONDS) },
+    );
+  }
+
   let upstreamResp;
   try {
     upstreamResp = await fetch(upstream.toString());
@@ -124,6 +143,9 @@ async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
   }
 
   if (!upstreamResp.ok) {
+    if (upstreamResp.status === 429) {
+      ctx.waitUntil(markRateLimitCooldown(cache));
+    }
     if (cached) {
       return respondFromCache(cached, corsHeaders, "STALE", "upstream_non_200");
     }
@@ -156,11 +178,27 @@ async function proxyToAlphaVantage(params, env, corsHeaders, ctx) {
   }
 
   if (payload["Note"]) {
+    const safeDetail = sanitizeRateLimitDetail(payload["Note"]);
+    ctx.waitUntil(markRateLimitCooldown(cache));
     if (cached) {
       return respondFromCache(cached, corsHeaders, "STALE", "upstream_rate_limited");
     }
     return json(
-      { error: "Upstream rate limit", detail: payload["Note"] },
+      { error: "Upstream rate limit", detail: safeDetail },
+      429,
+      corsHeaders,
+      { "Retry-After": String(softTtlSeconds) },
+    );
+  }
+
+  if (typeof payload["Information"] === "string" && payload["Information"].trim().length > 0) {
+    const safeDetail = sanitizeRateLimitDetail(payload["Information"]);
+    ctx.waitUntil(markRateLimitCooldown(cache));
+    if (cached) {
+      return respondFromCache(cached, corsHeaders, "STALE", "upstream_rate_limited");
+    }
+    return json(
+      { error: "Upstream rate limit", detail: safeDetail },
       429,
       corsHeaders,
       { "Retry-After": String(softTtlSeconds) },
@@ -190,7 +228,7 @@ function buildCacheKey(params) {
     return aKey.localeCompare(bKey);
   });
 
-  const cacheKeyUrl = new URL("https://cache-key.local/query");
+  const cacheKeyUrl = new URL(`https://cache-key.local/${CACHE_KEY_NAMESPACE}/query`);
   for (const [k, v] of sorted) {
     cacheKeyUrl.searchParams.set(k, v);
   }
@@ -236,6 +274,27 @@ function respondFromCache(cachedResponse, corsHeaders, cacheStatus, reason) {
     status: cachedResponse.status,
     headers,
   });
+}
+
+function sanitizeRateLimitDetail(rawDetail) {
+  const detail = String(rawDetail || "");
+  return detail.replace(/(API key(?:\s+as)?\s+)[A-Z0-9]+/gi, "$1[REDACTED]");
+}
+
+async function isRateLimitCooldown(cache) {
+  const marker = await cache.match(new Request(RATE_LIMIT_CACHE_KEY, { method: "GET" }));
+  return !!marker;
+}
+
+async function markRateLimitCooldown(cache) {
+  const markerResponse = new Response("1", {
+    status: 200,
+    headers: {
+      "Cache-Control": `public, max-age=${RATE_LIMIT_COOLDOWN_SECONDS}`,
+      "Content-Type": "text/plain",
+    },
+  });
+  await cache.put(new Request(RATE_LIMIT_CACHE_KEY, { method: "GET" }), markerResponse);
 }
 
 function buildCorsHeaders(env, origin) {

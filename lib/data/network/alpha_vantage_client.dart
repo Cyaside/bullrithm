@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../common/config/app_env.dart';
 import '../models/models.dart';
@@ -13,6 +14,10 @@ enum MarketDataProvider { alphaProxy, alphaDirect }
 
 class AlphaVantageClient {
   static const _maxCacheEntries = 200;
+  static const _maxPersistedEntries = 120;
+  static const _maxPersistedAge = Duration(days: 7);
+  static const _persistDebounceDelay = Duration(milliseconds: 900);
+  static const _prefsCacheKey = 'alpha_vantage_response_cache_v1';
   static const _defaultCacheTtl = Duration(minutes: 2);
   static const Map<String, Duration> _cacheTtlByFunction = <String, Duration>{
     'SYMBOL_SEARCH': Duration(hours: 6),
@@ -26,6 +31,8 @@ class AlphaVantageClient {
       <String, _CacheEntry>{};
   static final Map<String, Future<Map<String, dynamic>>> _inFlightRequests =
       <String, Future<Map<String, dynamic>>>{};
+  static Future<void>? _cacheLoadFuture;
+  static Timer? _persistDebounceTimer;
 
   AlphaVantageClient._({
     required MarketDataProvider provider,
@@ -48,6 +55,7 @@ class AlphaVantageClient {
   }) {
     final client = httpClient ?? http.Client();
     final outputLogger = logger ?? _defaultLogger;
+    _warmUpPersistentCache();
 
     if (AppEnv.hasAlphaVantageProxyUrl) {
       return AlphaVantageClient._(
@@ -171,6 +179,8 @@ class AlphaVantageClient {
   }
 
   Future<Map<String, dynamic>> _alphaQuery(Map<String, String> params) async {
+    await _ensureCacheLoaded();
+
     final normalizedParams = <String, String>{
       for (final entry in params.entries) entry.key: entry.value,
     };
@@ -223,6 +233,7 @@ class AlphaVantageClient {
         cachedAt: DateTime.now(),
       );
       _evictCacheIfNeeded();
+      _schedulePersistCache();
       return result;
     } on AlphaVantageApiException catch (error) {
       if (staleCache != null) {
@@ -263,14 +274,7 @@ class AlphaVantageClient {
   }
 
   void _evictCacheIfNeeded() {
-    if (_responseCache.length <= _maxCacheEntries) return;
-    final oldestEntry = _responseCache.entries.reduce(
-      (currentOldest, entry) =>
-          entry.value.cachedAt.isBefore(currentOldest.value.cachedAt)
-          ? entry
-          : currentOldest,
-    );
-    _responseCache.remove(oldestEntry.key);
+    _trimCacheToLimit(_maxCacheEntries);
   }
 
   String _buildCacheKey(Map<String, String> params) {
@@ -288,6 +292,95 @@ class AlphaVantageClient {
   }
 
   bool get _canFallbackDirect => _alphaApiKey?.trim().isNotEmpty ?? false;
+
+  static void _warmUpPersistentCache() {
+    _cacheLoadFuture ??= _loadCacheFromDisk();
+  }
+
+  static Future<void> _ensureCacheLoaded() {
+    _cacheLoadFuture ??= _loadCacheFromDisk();
+    return _cacheLoadFuture!;
+  }
+
+  static Future<void> _loadCacheFromDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsCacheKey);
+      if (raw == null || raw.trim().isEmpty) return;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return;
+
+      final now = DateTime.now();
+      for (final entry in decoded.entries) {
+        final key = entry.key;
+        final value = entry.value;
+        if (value is! Map) continue;
+
+        final mapValue = value.map(
+          (innerKey, innerValue) => MapEntry('$innerKey', innerValue),
+        );
+        final cachedAtRaw = mapValue['cachedAt'];
+        final payloadRaw = mapValue['payload'];
+        if (cachedAtRaw is! String || payloadRaw is! Map) continue;
+
+        final cachedAt = DateTime.tryParse(cachedAtRaw);
+        if (cachedAt == null) continue;
+        if (now.difference(cachedAt) > _maxPersistedAge) continue;
+
+        final payload = payloadRaw.map(
+          (payloadKey, payloadValue) => MapEntry('$payloadKey', payloadValue),
+        );
+        _responseCache[key] = _CacheEntry(payload: payload, cachedAt: cachedAt);
+      }
+
+      _trimCacheToLimit(_maxCacheEntries);
+    } catch (_) {
+      // Ignore persistence failures. Network fetch path still works.
+    }
+  }
+
+  static void _schedulePersistCache() {
+    _persistDebounceTimer?.cancel();
+    _persistDebounceTimer = Timer(_persistDebounceDelay, () {
+      unawaited(_persistCacheToDisk());
+    });
+  }
+
+  static Future<void> _persistCacheToDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final entries = _responseCache.entries.toList(growable: false)
+        ..sort(
+          (a, b) => b.value.cachedAt.compareTo(a.value.cachedAt),
+        );
+
+      final limited = entries.take(_maxPersistedEntries);
+      final serializable = <String, dynamic>{};
+      for (final entry in limited) {
+        serializable[entry.key] = <String, dynamic>{
+          'cachedAt': entry.value.cachedAt.toIso8601String(),
+          'payload': entry.value.payload,
+        };
+      }
+
+      await prefs.setString(_prefsCacheKey, jsonEncode(serializable));
+    } catch (_) {
+      // Ignore persistence failures. In-memory cache remains active.
+    }
+  }
+
+  static void _trimCacheToLimit(int maxEntries) {
+    if (_responseCache.length <= maxEntries) return;
+
+    final entries = _responseCache.entries.toList(growable: false)
+      ..sort((a, b) => a.value.cachedAt.compareTo(b.value.cachedAt));
+
+    final deleteCount = _responseCache.length - maxEntries;
+    for (var i = 0; i < deleteCount; i++) {
+      _responseCache.remove(entries[i].key);
+    }
+  }
 
   Future<Map<String, dynamic>> _queryViaProxy(Map<String, String> params) {
     final base = _proxyBaseUrl?.trim() ?? '';
@@ -364,7 +457,12 @@ class AlphaVantageClient {
 
     final info = decoded['Information'] as String?;
     if (info != null && info.isNotEmpty) {
-      throw AlphaVantageApiException(info);
+      final lowered = info.toLowerCase();
+      final isRateLimited =
+          lowered.contains('rate limit') ||
+          lowered.contains('requests') ||
+          lowered.contains('premium');
+      throw AlphaVantageApiException(info, isRateLimit: isRateLimited);
     }
 
     return decoded;
