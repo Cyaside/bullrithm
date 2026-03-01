@@ -163,8 +163,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) =>
-                          NewsSentimentScreen(initialTicker: widget.symbol),
+                      builder: (_) => const NewsSentimentScreen(),
                     ),
                   );
                 },

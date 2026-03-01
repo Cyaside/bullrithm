@@ -5,16 +5,9 @@ import '../../../common/theme/app_theme.dart';
 import '../../../data/models/models.dart';
 import '../../../data/network/alpha_vantage_client.dart';
 
-enum NewsFilterMode { ticker, market }
-
 class NewsSentimentScreen extends StatefulWidget {
-  const NewsSentimentScreen({
-    super.key,
-    this.initialTicker,
-    this.showScaffold = true,
-  });
+  const NewsSentimentScreen({super.key, this.showScaffold = true});
 
-  final String? initialTicker;
   final bool showScaffold;
 
   @override
@@ -22,10 +15,8 @@ class NewsSentimentScreen extends StatefulWidget {
 }
 
 class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
-  final _tickerController = TextEditingController();
   AlphaVantageClient? _client;
 
-  NewsFilterMode _mode = NewsFilterMode.market;
   List<NewsItem> _items = const [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -35,10 +26,6 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
   @override
   void initState() {
     super.initState();
-
-    final initial = widget.initialTicker?.trim().toUpperCase() ?? '';
-    _tickerController.text = initial;
-    _mode = initial.isEmpty ? NewsFilterMode.market : NewsFilterMode.ticker;
 
     try {
       _client = AlphaVantageClient.fromEnv();
@@ -51,22 +38,12 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
 
   @override
   void dispose() {
-    _tickerController.dispose();
     _client?.dispose();
     super.dispose();
   }
 
   Future<void> _fetchNews() async {
     if (_client == null) return;
-
-    final ticker = _tickerController.text.trim().toUpperCase();
-    if (_mode == NewsFilterMode.ticker && ticker.isEmpty) {
-      setState(() {
-        _errorMessage = 'Ticker wajib diisi jika filter menggunakan ticker.';
-        _isLoading = false;
-      });
-      return;
-    }
 
     final currentToken = ++_requestToken;
     setState(() {
@@ -75,10 +52,7 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
     });
 
     try {
-      final items = await _client!.fetchNewsSentiment(
-        ticker: _mode == NewsFilterMode.ticker ? ticker : null,
-        limit: 20,
-      );
+      final items = await _client!.fetchNewsSentiment(limit: 20);
       if (!mounted || currentToken != _requestToken) return;
 
       setState(() {
@@ -126,7 +100,6 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final query = _tickerController.text.trim();
 
     final content = RefreshIndicator(
       onRefresh: _fetchNews,
@@ -139,42 +112,8 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
             subtitle: 'Market insights & updates',
           ),
           const SizedBox(height: 12),
-          Text('Filter Berita', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 8),
-          SegmentedButton<NewsFilterMode>(
-            segments: const [
-              ButtonSegment<NewsFilterMode>(
-                value: NewsFilterMode.ticker,
-                label: Text('By Ticker'),
-                icon: Icon(Icons.sell_outlined),
-              ),
-              ButtonSegment<NewsFilterMode>(
-                value: NewsFilterMode.market,
-                label: Text('Market'),
-                icon: Icon(Icons.public),
-              ),
-            ],
-            selected: <NewsFilterMode>{_mode},
-            onSelectionChanged: (selection) {
-              setState(() {
-                _mode = selection.first;
-              });
-              _fetchNews();
-            },
-          ),
-          if (_mode == NewsFilterMode.ticker) ...[
-            const SizedBox(height: 12),
-            TextField(
-              controller: _tickerController,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                hintText: 'Contoh: AAPL',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onSubmitted: (_) => _fetchNews(),
-            ),
-          ],
-          const SizedBox(height: 12),
+          Text('Berita Market', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 10),
           Row(
             children: [
               FilledButton.icon(
@@ -194,10 +133,6 @@ class _NewsSentimentScreenState extends State<NewsSentimentScreen> {
               ),
             ],
           ),
-          if (_mode == NewsFilterMode.ticker && query.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text('Ticker aktif: $query', style: theme.textTheme.bodySmall),
-          ],
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),
             _NewsErrorBanner(message: _errorMessage!, onRetry: _fetchNews),

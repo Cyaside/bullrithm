@@ -414,6 +414,15 @@ class _MarketMoverCard extends StatelessWidget {
               ),
             ],
           ),
+          onTap: item.symbol.trim().isEmpty
+              ? null
+              : () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => StockDetailScreen(symbol: item.symbol),
+                    ),
+                  );
+                },
         ),
       ),
     );
